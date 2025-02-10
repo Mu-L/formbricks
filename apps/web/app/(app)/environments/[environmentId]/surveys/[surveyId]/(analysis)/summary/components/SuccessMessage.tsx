@@ -1,70 +1,53 @@
 "use client";
 
-import { TSurvey } from "@formbricks/types/surveys";
-import { Confetti } from "@formbricks/ui/Confetti";
+import { Confetti } from "@/modules/ui/components/confetti";
+import { useTranslate } from "@tolgee/react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import ShareEmbedSurvey from "./ShareEmbedSurvey";
-import { TProduct } from "@formbricks/types/product";
 import { TEnvironment } from "@formbricks/types/environment";
-import { TProfile } from "@formbricks/types/profile";
+import { TSurvey } from "@formbricks/types/surveys/types";
 
 interface SummaryMetadataProps {
   environment: TEnvironment;
   survey: TSurvey;
-  webAppUrl: string;
-  product: TProduct;
-  profile: TProfile;
-  singleUseIds?: string[];
 }
 
-export default function SuccessMessage({
-  environment,
-  survey,
-  webAppUrl,
-  product,
-  profile,
-}: SummaryMetadataProps) {
+export const SuccessMessage = ({ environment, survey }: SummaryMetadataProps) => {
+  const { t } = useTranslate();
   const searchParams = useSearchParams();
-  const [showLinkModal, setShowLinkModal] = useState(false);
   const [confetti, setConfetti] = useState(false);
+
+  const isAppSurvey = survey.type === "app";
+  const widgetSetupCompleted = environment.appSetupCompleted;
 
   useEffect(() => {
     const newSurveyParam = searchParams?.get("success");
     if (newSurveyParam && survey && environment) {
       setConfetti(true);
       toast.success(
-        survey.type === "web" && !environment.widgetSetupCompleted
-          ? "Almost there! Install widget to start receiving responses."
-          : "Congrats! Your survey is live.",
+        isAppSurvey && !widgetSetupCompleted
+          ? t("environments.surveys.summary.almost_there")
+          : t("environments.surveys.summary.congrats"),
         {
-          icon: survey.type === "web" && !environment.widgetSetupCompleted ? "🤏" : "🎉",
+          id: "survey-publish-success-toast",
+          icon: isAppSurvey && !widgetSetupCompleted ? "🤏" : "🎉",
           duration: 5000,
           position: "bottom-right",
         }
       );
-      if (survey.type === "link") {
-        setShowLinkModal(true);
-      }
+
       // Remove success param from url
       const url = new URL(window.location.href);
       url.searchParams.delete("success");
+      if (survey.type === "link") {
+        // Add share param to url to open share embed modal
+        url.searchParams.set("share", "true");
+      }
+
       window.history.replaceState({}, "", url.toString());
     }
-  }, [environment, searchParams, survey]);
+  }, [environment, isAppSurvey, searchParams, survey, widgetSetupCompleted, t]);
 
-  return (
-    <>
-      <ShareEmbedSurvey
-        survey={survey}
-        open={showLinkModal}
-        setOpen={setShowLinkModal}
-        webAppUrl={webAppUrl}
-        product={product}
-        profile={profile}
-      />
-      {confetti && <Confetti />}
-    </>
-  );
-}
+  return <>{confetti && <Confetti />}</>;
+};

@@ -1,51 +1,64 @@
 "use server";
 
-interface LinkSurveyEmailData {
-  surveyId: string;
-  email: string;
-  surveyData?: {
-    name?: string;
-    subheading?: string;
-  } | null;
-}
-
-interface TSurveyPinValidationResponse {
-  error?: TSurveyPinValidationResponseError;
-  survey?: TSurvey;
-}
-
-import { TSurveyPinValidationResponseError } from "@/app/s/[surveyId]/types";
-import { sendLinkSurveyToVerifiedEmail } from "@/app/lib/email";
+import { actionClient } from "@/lib/utils/action-client";
+import { getOrganizationIdFromSurveyId } from "@/lib/utils/helper";
+import { getOrganizationLogoUrl } from "@/modules/ee/whitelabel/email-customization/lib/organization";
+import { sendLinkSurveyToVerifiedEmail } from "@/modules/email";
+import { z } from "zod";
 import { verifyTokenForLinkSurvey } from "@formbricks/lib/jwt";
+import { getIfResponseWithSurveyIdAndEmailExist } from "@formbricks/lib/response/service";
 import { getSurvey } from "@formbricks/lib/survey/service";
-import { TSurvey } from "@formbricks/types/surveys";
+import { ZId } from "@formbricks/types/common";
+import { ZLinkSurveyEmailData } from "@formbricks/types/email";
+import { InvalidInputError, ResourceNotFoundError } from "@formbricks/types/errors";
 
-export async function sendLinkSurveyEmailAction(data: LinkSurveyEmailData) {
-  if (!data.surveyData) {
-    throw new Error("No survey data provided");
-  }
-  return await sendLinkSurveyToVerifiedEmail(data);
-}
-export async function verifyTokenAction(token: string, surveyId: string): Promise<boolean> {
-  return await verifyTokenForLinkSurvey(token, surveyId);
-}
+export const sendLinkSurveyEmailAction = actionClient
+  .schema(ZLinkSurveyEmailData)
+  .action(async ({ parsedInput }) => {
+    const organizationId = await getOrganizationIdFromSurveyId(parsedInput.surveyId);
+    const organizationLogoUrl = await getOrganizationLogoUrl(organizationId);
 
-export async function validateSurveyPinAction(
-  surveyId: string,
-  pin: string
-): Promise<TSurveyPinValidationResponse> {
-  try {
-    const survey = await getSurvey(surveyId);
-    if (!survey) return { error: TSurveyPinValidationResponseError.NOT_FOUND };
+    await sendLinkSurveyToVerifiedEmail({ ...parsedInput, logoUrl: organizationLogoUrl || "" });
+    return { success: true };
+  });
+
+const ZVerifyTokenAction = z.object({
+  surveyId: ZId,
+  token: z.string(),
+});
+
+export const verifyTokenAction = actionClient.schema(ZVerifyTokenAction).action(async ({ parsedInput }) => {
+  return await verifyTokenForLinkSurvey(parsedInput.token, parsedInput.surveyId);
+});
+
+const ZValidateSurveyPinAction = z.object({
+  surveyId: ZId,
+  pin: z.string(),
+});
+
+export const validateSurveyPinAction = actionClient
+  .schema(ZValidateSurveyPinAction)
+  .action(async ({ parsedInput }) => {
+    const survey = await getSurvey(parsedInput.surveyId);
+    if (!survey) throw new ResourceNotFoundError("Survey", parsedInput.surveyId);
 
     const originalPin = survey.pin?.toString();
 
     if (!originalPin) return { survey };
-
-    if (originalPin !== pin) return { error: TSurveyPinValidationResponseError.INCORRECT_PIN };
+    if (originalPin !== parsedInput.pin) {
+      throw new InvalidInputError("INVALID_PIN");
+    }
 
     return { survey };
-  } catch (error) {
-    return { error: TSurveyPinValidationResponseError.INTERNAL_SERVER_ERROR };
-  }
-}
+  });
+
+const ZGetIfResponseWithSurveyIdAndEmailExistAction = z.object({
+  surveyId: ZId,
+  email: z.string(),
+});
+
+export const getIfResponseWithSurveyIdAndEmailExistAction = actionClient
+  .schema(ZGetIfResponseWithSurveyIdAndEmailExistAction)
+  .action(async ({ parsedInput }) => {
+    return await getIfResponseWithSurveyIdAndEmailExist(parsedInput.surveyId, parsedInput.email);
+  });

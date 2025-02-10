@@ -2,9 +2,14 @@ import { z } from "zod";
 
 class ResourceNotFoundError extends Error {
   statusCode = 404;
-  constructor(resource: string, id: string) {
-    super(`${resource} with ID ${id} not found`);
+  resourceId: string | null;
+  resourceType: string;
+
+  constructor(resource: string, id: string | null) {
+    super(id ? `${resource} with ID ${id} not found` : `${resource} not found`);
     this.name = "ResourceNotFoundError";
+    this.resourceType = resource;
+    this.resourceId = id;
   }
 }
 
@@ -28,7 +33,7 @@ class UnknownError extends Error {
   statusCode = 500;
   constructor(message: string) {
     super(message);
-    this.name = "DatabaseError";
+    this.name = "UnknownError";
   }
 }
 
@@ -80,12 +85,23 @@ class AuthorizationError extends Error {
   }
 }
 
-type NetworkError = {
+interface NetworkError {
   code: "network_error";
   message: string;
   status: number;
   url: URL;
-};
+  responseMessage?: string;
+  details?: Record<string, string | string[] | number | number[] | boolean | boolean[]>;
+}
+
+interface ForbiddenError {
+  code: "forbidden";
+  message: string;
+  status: number;
+  url: URL;
+  responseMessage?: string;
+  details?: Record<string, string | string[] | number | number[] | boolean | boolean[]>;
+}
 
 export const ZErrorHandler = z.function().args(z.any()).returns(z.void());
 
@@ -101,4 +117,22 @@ export {
   AuthenticationError,
   AuthorizationError,
 };
-export type { NetworkError };
+export type { NetworkError, ForbiddenError };
+
+export interface ApiErrorResponse {
+  code:
+    | "not_found"
+    | "gone"
+    | "bad_request"
+    | "internal_server_error"
+    | "unauthorized"
+    | "method_not_allowed"
+    | "not_authenticated"
+    | "forbidden"
+    | "network_error";
+  message: string;
+  status: number;
+  url: URL;
+  details?: Record<string, string | string[] | number | number[] | boolean | boolean[]>;
+  responseMessage?: string;
+}

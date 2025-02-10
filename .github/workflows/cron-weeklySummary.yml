@@ -1,6 +1,7 @@
-name: Cron - weeklySummary
+name: Cron - Weekly summary
 
 on:
+  workflow_dispatch:
   # "Scheduled workflows run on the latest commit on the default or base branch."
   # — https://docs.github.com/en/actions/learn-github-actions/events-that-trigger-workflows#schedule
   schedule:
@@ -8,6 +9,8 @@ on:
     - cron: "0 8 * * 1"
 jobs:
   cron-weeklySummary:
+    permissions:
+      contents: read    
     env:
       APP_URL: ${{ secrets.APP_URL }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}
@@ -16,7 +19,7 @@ jobs:
       - name: cURL request
         if: ${{ env.APP_URL && env.CRON_SECRET }}
         run: |
-          curl ${{ env.APP_URL }}/api/cron/weekly_summary \
+          curl ${{ env.APP_URL }}/api/cron/weekly-summary \
             -X POST \
             -H 'content-type: application/json' \
             -H 'x-api-key: ${{ env.CRON_SECRET }}' \

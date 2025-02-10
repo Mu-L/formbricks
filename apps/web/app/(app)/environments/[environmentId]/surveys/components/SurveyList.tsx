@@ -1,127 +1,194 @@
-import { UsageAttributesUpdater } from "@/app/(app)/components/FormbricksClient";
-import SurveyDropDownMenu from "@/app/(app)/environments/[environmentId]/surveys/components/SurveyDropDownMenu";
-import SurveyStarter from "@/app/(app)/environments/[environmentId]/surveys/components/SurveyStarter";
-import { SurveyStatusIndicator } from "@formbricks/ui/SurveyStatusIndicator";
-import { WEBAPP_URL } from "@formbricks/lib/constants";
-import { getEnvironment, getEnvironments } from "@formbricks/lib/environment/service";
-import { getProductByEnvironmentId } from "@formbricks/lib/product/service";
-import { getSurveys } from "@formbricks/lib/survey/service";
-import type { TEnvironment } from "@formbricks/types/environment";
-import { Badge } from "@formbricks/ui/Badge";
-import { ComputerDesktopIcon, LinkIcon, PlusIcon } from "@heroicons/react/24/solid";
-import Link from "next/link";
-import { generateSurveySingleUseId } from "@/app/lib/singleUseSurveys";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@formbricks/lib/authOptions";
+"use client";
 
-export default async function SurveysList({ environmentId }: { environmentId: string }) {
-  const session = await getServerSession(authOptions);
-  const product = await getProductByEnvironmentId(environmentId);
+import { getSurveysAction } from "@/app/(app)/environments/[environmentId]/surveys/actions";
+import { getFormattedFilters } from "@/app/(app)/environments/[environmentId]/surveys/lib/utils";
+import { TSurvey } from "@/app/(app)/environments/[environmentId]/surveys/types/surveys";
+import { Button } from "@/modules/ui/components/button";
+import { useAutoAnimate } from "@formkit/auto-animate/react";
+import { useTranslate } from "@tolgee/react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { FORMBRICKS_SURVEYS_FILTERS_KEY_LS } from "@formbricks/lib/localStorage";
+import { TEnvironment } from "@formbricks/types/environment";
+import { wrapThrows } from "@formbricks/types/error-handlers";
+import { TProjectConfigChannel } from "@formbricks/types/project";
+import { TSurveyFilters } from "@formbricks/types/surveys/types";
+import { TUserLocale } from "@formbricks/types/user";
+import { SurveyCard } from "./SurveyCard";
+import { SurveyFilters } from "./SurveyFilters";
+import { SurveyLoading } from "./SurveyLoading";
 
-  if (!session) {
-    throw new Error("Session not found");
-  }
+interface SurveysListProps {
+  environment: TEnvironment;
+  otherEnvironment: TEnvironment;
+  isReadOnly: boolean;
+  WEBAPP_URL: string;
+  userId: string;
+  surveysPerPage: number;
+  currentProjectChannel: TProjectConfigChannel;
+  locale: TUserLocale;
+}
 
-  if (!product) {
-    throw new Error("Product not found");
-  }
+export const initialFilters: TSurveyFilters = {
+  name: "",
+  createdBy: [],
+  status: [],
+  type: [],
+  sortBy: "relevance",
+};
 
-  const environment = await getEnvironment(environmentId);
-  if (!environment) {
-    throw new Error("Environment not found");
-  }
-  const surveys = await getSurveys(environmentId);
+export const SurveysList = ({
+  environment,
+  otherEnvironment,
+  isReadOnly,
+  WEBAPP_URL,
+  userId,
+  surveysPerPage: surveysLimit,
+  currentProjectChannel,
+  locale,
+}: SurveysListProps) => {
+  const [surveys, setSurveys] = useState<TSurvey[]>([]);
+  const [isFetching, setIsFetching] = useState(true);
+  const [hasMore, setHasMore] = useState<boolean>(true);
+  const { t } = useTranslate();
+  const [surveyFilters, setSurveyFilters] = useState<TSurveyFilters>(initialFilters);
+  const [isFilterInitialized, setIsFilterInitialized] = useState(false);
 
-  const environments: TEnvironment[] = await getEnvironments(product.id);
-  const otherEnvironment = environments.find((e) => e.type !== environment.type)!;
+  const filters = useMemo(() => getFormattedFilters(surveyFilters, userId), [surveyFilters, userId]);
+  const [parent] = useAutoAnimate();
 
-  if (surveys.length === 0) {
-    return (
-      <SurveyStarter
-        environmentId={environmentId}
-        environment={environment}
-        product={product}
-        profile={session.user}
-      />
-    );
-  }
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedFilters = localStorage.getItem(FORMBRICKS_SURVEYS_FILTERS_KEY_LS);
+      if (savedFilters) {
+        const surveyParseResult = wrapThrows(() => JSON.parse(savedFilters))();
+
+        if (!surveyParseResult.ok) {
+          localStorage.removeItem(FORMBRICKS_SURVEYS_FILTERS_KEY_LS);
+          setSurveyFilters(initialFilters);
+        } else {
+          setSurveyFilters(surveyParseResult.data);
+        }
+      }
+      setIsFilterInitialized(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isFilterInitialized) {
+      localStorage.setItem(FORMBRICKS_SURVEYS_FILTERS_KEY_LS, JSON.stringify(surveyFilters));
+    }
+  }, [surveyFilters, isFilterInitialized]);
+
+  useEffect(() => {
+    if (isFilterInitialized) {
+      const fetchInitialSurveys = async () => {
+        setIsFetching(true);
+        const res = await getSurveysAction({
+          environmentId: environment.id,
+          limit: surveysLimit,
+          offset: undefined,
+          filterCriteria: filters,
+        });
+        if (res?.data) {
+          if (res.data.length < surveysLimit) {
+            setHasMore(false);
+          } else {
+            setHasMore(true);
+          }
+          setSurveys(res.data);
+          setIsFetching(false);
+        }
+      };
+      fetchInitialSurveys();
+    }
+  }, [environment.id, surveysLimit, filters, isFilterInitialized]);
+
+  const fetchNextPage = useCallback(async () => {
+    setIsFetching(true);
+    const res = await getSurveysAction({
+      environmentId: environment.id,
+      limit: surveysLimit,
+      offset: surveys.length,
+      filterCriteria: filters,
+    });
+    if (res?.data) {
+      if (res.data.length === 0 || res.data.length < surveysLimit) {
+        setHasMore(false);
+      } else {
+        setHasMore(true);
+      }
+
+      setSurveys([...surveys, ...res.data]);
+      setIsFetching(false);
+    }
+  }, [environment.id, surveys, surveysLimit, filters]);
+
+  const handleDeleteSurvey = async (surveyId: string) => {
+    const newSurveys = surveys.filter((survey) => survey.id !== surveyId);
+    setSurveys(newSurveys);
+  };
+
+  const handleDuplicateSurvey = async (survey: TSurvey) => {
+    const newSurveys = [survey, ...surveys];
+    setSurveys(newSurveys);
+  };
 
   return (
-    <>
-      <ul className="grid place-content-stretch gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-5 ">
-        <Link href={`/environments/${environmentId}/surveys/templates`}>
-          <li className="col-span-1 h-56">
-            <div className="delay-50 flex h-full items-center justify-center overflow-hidden rounded-md bg-gradient-to-br from-slate-900 to-slate-800 font-light text-white shadow transition ease-in-out hover:scale-105 hover:from-slate-800 hover:to-slate-700">
-              <div id="main-cta" className="px-4 py-8 sm:p-14 xl:p-10">
-                <PlusIcon className="stroke-thin mx-auto h-14 w-14" />
-                Create Survey
-              </div>
+    <div className="space-y-6">
+      <SurveyFilters
+        surveyFilters={surveyFilters}
+        setSurveyFilters={setSurveyFilters}
+        currentProjectChannel={currentProjectChannel}
+      />
+      {surveys.length > 0 ? (
+        <div>
+          <div className="flex-col space-y-3" ref={parent}>
+            <div className="mt-6 grid w-full grid-cols-8 place-items-center gap-3 px-6 pr-8 text-sm text-slate-800">
+              <div className="col-span-2 place-self-start">Name</div>
+              <div className="col-span-1">{t("common.status")}</div>
+              <div className="col-span-1">{t("common.responses")}</div>
+              <div className="col-span-1">{t("common.type")}</div>
+              <div className="col-span-1">{t("common.created_at")}</div>
+              <div className="col-span-1">{t("common.updated_at")}</div>
+              <div className="col-span-1">{t("common.created_by")}</div>
             </div>
-          </li>
-        </Link>
-        {surveys
-          .sort((a, b) => b.updatedAt?.getTime() - a.updatedAt?.getTime())
-          .map((survey) => {
-            const isSingleUse = survey.singleUse?.enabled ?? false;
-            const isEncrypted = survey.singleUse?.isEncrypted ?? false;
-            const singleUseId = isSingleUse ? generateSurveySingleUseId(isEncrypted) : undefined;
-            return (
-              <li key={survey.id} className="relative col-span-1 h-56">
-                <div className="delay-50 flex h-full flex-col justify-between rounded-md bg-white shadow transition ease-in-out hover:scale-105">
-                  <div className="px-6 py-4">
-                    <Badge
-                      StartIcon={survey.type === "link" ? LinkIcon : ComputerDesktopIcon}
-                      startIconClassName="mr-2"
-                      text={
-                        survey.type === "link"
-                          ? "Link Survey"
-                          : survey.type === "web"
-                          ? "In-Product Survey"
-                          : ""
-                      }
-                      type="gray"
-                      size={"tiny"}
-                      className="font-base"></Badge>
-                    <p className="my-2 line-clamp-3 text-lg">{survey.name}</p>
-                  </div>
-                  <Link
-                    href={
-                      survey.status === "draft"
-                        ? `/environments/${environmentId}/surveys/${survey.id}/edit`
-                        : `/environments/${environmentId}/surveys/${survey.id}/summary`
-                    }
-                    className="absolute h-full w-full"></Link>
-                  <div className="divide-y divide-slate-100">
-                    <div className="flex justify-between px-4 py-2 text-right sm:px-6">
-                      <div className="flex items-center">
-                        {survey.status !== "draft" && (
-                          <>
-                            {(survey.type === "link" || environment.widgetSetupCompleted) && (
-                              <SurveyStatusIndicator status={survey.status} />
-                            )}
-                          </>
-                        )}
-                        {survey.status === "draft" && (
-                          <span className="text-xs italic text-slate-400">Draft</span>
-                        )}
-                      </div>
-                      <SurveyDropDownMenu
-                        survey={survey}
-                        key={`surveys-${survey.id}`}
-                        environmentId={environmentId}
-                        environment={environment}
-                        otherEnvironment={otherEnvironment!}
-                        webAppUrl={WEBAPP_URL}
-                        singleUseId={singleUseId}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-      </ul>
-      <UsageAttributesUpdater numSurveys={surveys.length} />
-    </>
+            {surveys.map((survey) => {
+              return (
+                <SurveyCard
+                  key={survey.id}
+                  survey={survey}
+                  environment={environment}
+                  otherEnvironment={otherEnvironment}
+                  isReadOnly={isReadOnly}
+                  WEBAPP_URL={WEBAPP_URL}
+                  duplicateSurvey={handleDuplicateSurvey}
+                  deleteSurvey={handleDeleteSurvey}
+                  locale={locale}
+                />
+              );
+            })}
+          </div>
+
+          {hasMore && (
+            <div className="flex justify-center py-5">
+              <Button onClick={fetchNextPage} variant="secondary" size="sm" loading={isFetching}>
+                {t("common.load_more")}
+              </Button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex h-full w-full">
+          {isFetching ? (
+            <SurveyLoading />
+          ) : (
+            <div className="flex w-full flex-col items-center justify-center text-slate-600">
+              <span className="h-24 w-24 p-4 text-center text-5xl">🕵️</span>
+              {t("common.no_surveys_found")}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
-}
+};

@@ -1,93 +1,70 @@
-export const revalidate = REVALIDATION_INTERVAL;
-
-import LinkSurvey from "@/app/s/[surveyId]/components/LinkSurvey";
-import SurveyInactive from "@/app/s/[surveyId]/components/SurveyInactive";
-import { REVALIDATION_INTERVAL, WEBAPP_URL } from "@formbricks/lib/constants";
-import { getOrCreatePersonByUserId } from "@formbricks/lib/person/service";
-import { getProductByEnvironmentId } from "@formbricks/lib/product/service";
-import { getSurvey } from "@formbricks/lib/survey/service";
-import { getEmailVerificationStatus } from "./lib/helpers";
-import { checkValidity } from "@/app/s/[surveyId]/lib/prefilling";
-import { notFound } from "next/navigation";
-import { getResponseBySingleUseId } from "@formbricks/lib/response/service";
-import { TResponse } from "@formbricks/types/responses";
 import { validateSurveySingleUseId } from "@/app/lib/singleUseSurveys";
+import { LinkSurvey } from "@/app/s/[surveyId]/components/link-survey";
+import { PinScreen } from "@/app/s/[surveyId]/components/pin-screen";
+import { SurveyInactive } from "@/app/s/[surveyId]/components/survey-inactive";
+import { getMetadataForLinkSurvey } from "@/app/s/[surveyId]/metadata";
+import { getMultiLanguagePermission } from "@/modules/ee/license-check/lib/utils";
 import type { Metadata } from "next";
-import PinScreen from "@/app/s/[surveyId]/components/PinScreen";
+import { notFound } from "next/navigation";
+import { IMPRINT_URL, IS_FORMBRICKS_CLOUD, PRIVACY_URL, WEBAPP_URL } from "@formbricks/lib/constants";
+import { getOrganizationByEnvironmentId } from "@formbricks/lib/organization/service";
+import { getProjectByEnvironmentId } from "@formbricks/lib/project/service";
+import { getResponseBySingleUseId, getResponseCountBySurveyId } from "@formbricks/lib/response/service";
+import { getSurvey } from "@formbricks/lib/survey/service";
+import { findMatchingLocale } from "@formbricks/lib/utils/locale";
+import { ZId } from "@formbricks/types/common";
+import { TResponse } from "@formbricks/types/responses";
+import { getEmailVerificationDetails } from "./lib/helpers";
 
 interface LinkSurveyPageProps {
-  params: {
+  params: Promise<{
     surveyId: string;
-  };
-  searchParams: {
+  }>;
+  searchParams: Promise<{
     suId?: string;
-    userId?: string;
     verify?: string;
-  };
+    lang?: string;
+    embed?: string;
+    preview?: string;
+  }>;
 }
 
-export async function generateMetadata({ params }: LinkSurveyPageProps): Promise<Metadata> {
-  const survey = await getSurvey(params.surveyId);
-
-  if (!survey || survey.type !== "link" || survey.status === "draft") {
+export const generateMetadata = async (props: LinkSurveyPageProps): Promise<Metadata> => {
+  const params = await props.params;
+  const validId = ZId.safeParse(params.surveyId);
+  if (!validId.success) {
     notFound();
   }
 
-  const product = await getProductByEnvironmentId(survey.environmentId);
+  return getMetadataForLinkSurvey(params.surveyId);
+};
 
-  if (!product) {
-    throw new Error("Product not found");
+const Page = async (props: LinkSurveyPageProps) => {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
+  const validId = ZId.safeParse(params.surveyId);
+  if (!validId.success) {
+    notFound();
   }
-
-  function getNameForURL(string) {
-    return string.replace(/ /g, "%20");
-  }
-
-  function getBrandColorForURL(string) {
-    return string.replace(/#/g, "%23");
-  }
-
-  const brandColor = getBrandColorForURL(product.brandColor);
-  const surveyName = getNameForURL(survey.name);
-
-  const ogImgURL = `/api/v1/og?brandColor=${brandColor}&name=${surveyName}`;
-
-  return {
-    metadataBase: new URL(WEBAPP_URL),
-    openGraph: {
-      title: survey.name,
-      description: "Create your own survey like this with Formbricks' open source survey suite.",
-      url: `/s/${survey.id}`,
-      siteName: "",
-      images: [ogImgURL],
-      locale: "en_US",
-      type: "website",
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: survey.name,
-      description: "Create your own survey like this with Formbricks' open source survey suite.",
-      images: [ogImgURL],
-    },
-  };
-}
-
-export default async function LinkSurveyPage({ params, searchParams }: LinkSurveyPageProps) {
+  const isPreview = searchParams.preview === "true";
   const survey = await getSurvey(params.surveyId);
-
+  const locale = await findMatchingLocale();
   const suId = searchParams.suId;
+  const langParam = searchParams.lang; //can either be language code or alias
   const isSingleUseSurvey = survey?.singleUse?.enabled;
   const isSingleUseSurveyEncrypted = survey?.singleUse?.isEncrypted;
-
+  const isEmbed = searchParams.embed === "true";
   if (!survey || survey.type !== "link" || survey.status === "draft") {
     notFound();
   }
 
-  // question pre filling: Check if the first question is prefilled and if it is valid
-  const prefillAnswer = searchParams[survey.questions[0].id];
-  const isPrefilledAnswerValid = prefillAnswer ? checkValidity(survey!.questions[0], prefillAnswer) : false;
+  const organization = await getOrganizationByEnvironmentId(survey.environmentId);
+  if (!organization) {
+    throw new Error("Organization not found");
+  }
+  const isMultiLanguageAllowed = await getMultiLanguagePermission(organization);
 
-  if (survey && survey.status !== "inProgress") {
+  if (survey.status !== "inProgress" && !isPreview) {
     return (
       <SurveyInactive
         status={survey.status}
@@ -119,7 +96,7 @@ export default async function LinkSurveyPage({ params, searchParams }: LinkSurve
   if (isSingleUseSurvey) {
     try {
       singleUseResponse = singleUseId
-        ? (await getResponseBySingleUseId(survey.id, singleUseId)) ?? undefined
+        ? ((await getResponseBySingleUseId(survey.id, singleUseId)) ?? undefined)
         : undefined;
     } catch (error) {
       singleUseResponse = undefined;
@@ -127,43 +104,63 @@ export default async function LinkSurveyPage({ params, searchParams }: LinkSurve
   }
 
   // verify email: Check if the survey requires email verification
-  let emailVerificationStatus: string | undefined = undefined;
-  if (survey.verifyEmail) {
-    const token =
-      searchParams && Object.keys(searchParams).length !== 0 && searchParams.hasOwnProperty("verify")
-        ? searchParams.verify
-        : undefined;
+  let emailVerificationStatus = "";
+  let verifiedEmail: string | undefined = undefined;
+
+  if (survey.isVerifyEmailEnabled) {
+    const token = searchParams.verify;
 
     if (token) {
-      emailVerificationStatus = await getEmailVerificationStatus(survey.id, token);
+      const emailVerificationDetails = await getEmailVerificationDetails(survey.id, token);
+      emailVerificationStatus = emailVerificationDetails.status;
+      verifiedEmail = emailVerificationDetails.email;
     }
   }
 
-  // get product and person
-  const product = await getProductByEnvironmentId(survey.environmentId);
-  if (!product) {
-    throw new Error("Product not found");
+  // get project and person
+  const project = await getProjectByEnvironmentId(survey.environmentId);
+  if (!project) {
+    throw new Error("Project not found");
   }
 
-  const userId = searchParams.userId;
-  let person;
-  if (userId) {
-    person = await getOrCreatePersonByUserId(userId, survey.environmentId);
-  }
+  const getLanguageCode = (): string => {
+    if (!langParam || !isMultiLanguageAllowed) return "default";
+    else {
+      const selectedLanguage = survey.languages.find((surveyLanguage) => {
+        return (
+          surveyLanguage.language.code === langParam.toLowerCase() ||
+          surveyLanguage.language.alias?.toLowerCase() === langParam.toLowerCase()
+        );
+      });
+      if (selectedLanguage?.default || !selectedLanguage?.enabled) {
+        return "default";
+      }
+      return selectedLanguage.language.code;
+    }
+  };
 
-  const isSurveyPinProtected = Boolean(!!survey && survey.pin);
+  const languageCode = getLanguageCode();
+
+  const isSurveyPinProtected = Boolean(survey.pin);
+  const responseCount = await getResponseCountBySurveyId(survey.id);
 
   if (isSurveyPinProtected) {
     return (
       <PinScreen
         surveyId={survey.id}
-        product={product}
-        personId={person?.id}
+        project={project}
         emailVerificationStatus={emailVerificationStatus}
-        prefillAnswer={isPrefilledAnswerValid ? prefillAnswer : null}
         singleUseId={isSingleUseSurvey ? singleUseId : undefined}
         singleUseResponse={singleUseResponse ? singleUseResponse : undefined}
         webAppUrl={WEBAPP_URL}
+        IMPRINT_URL={IMPRINT_URL}
+        PRIVACY_URL={PRIVACY_URL}
+        IS_FORMBRICKS_CLOUD={IS_FORMBRICKS_CLOUD}
+        verifiedEmail={verifiedEmail}
+        languageCode={languageCode}
+        isEmbed={isEmbed}
+        locale={locale}
+        isPreview={isPreview}
       />
     );
   }
@@ -171,13 +168,22 @@ export default async function LinkSurveyPage({ params, searchParams }: LinkSurve
   return (
     <LinkSurvey
       survey={survey}
-      product={product}
-      personId={person?.id}
+      project={project}
       emailVerificationStatus={emailVerificationStatus}
-      prefillAnswer={isPrefilledAnswerValid ? prefillAnswer : null}
       singleUseId={isSingleUseSurvey ? singleUseId : undefined}
       singleUseResponse={singleUseResponse ? singleUseResponse : undefined}
       webAppUrl={WEBAPP_URL}
+      responseCount={survey.welcomeCard.showResponseCount ? responseCount : undefined}
+      verifiedEmail={verifiedEmail}
+      languageCode={languageCode}
+      isEmbed={isEmbed}
+      IMPRINT_URL={IMPRINT_URL}
+      PRIVACY_URL={PRIVACY_URL}
+      IS_FORMBRICKS_CLOUD={IS_FORMBRICKS_CLOUD}
+      locale={locale}
+      isPreview={isPreview}
     />
   );
-}
+};
+
+export default Page;

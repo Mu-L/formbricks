@@ -1,12 +1,24 @@
 {
-  "extends": "@formbricks/tsconfig/js-library.json",
-  "include": ["."],
-  "exclude": ["dist", "build", "node_modules"],
   "compilerOptions": {
     "baseUrl": ".",
+    "downlevelIteration": true,
     "paths": {
-      "@/*": ["../../apps/web/*"],
       "@prisma/client/*": ["@formbricks/database/client/*"]
-    }
-  }
+    },
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "strictNullChecks": true
+  },
+  "exclude": ["dist", "build", "node_modules", "../../packages/types/surveys.d.ts"],
+  "extends": "@formbricks/config-typescript/nextjs.json",
+  "include": [
+    ".",
+    "../types/*.d.ts",
+    "../../apps/web/lib/cache/contact-attribute-key.ts",
+    "../../apps/web/modules/utils/hooks",
+    "../../apps/web/lib/cache/api-key.ts"
+  ]
 }

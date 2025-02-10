@@ -1,10 +1,9 @@
 import { getSessionUser, hashApiKey } from "@/app/lib/api/apiHelper";
-import { prisma } from "@formbricks/database";
 import { headers } from "next/headers";
-import { NextResponse } from "next/server";
+import { prisma } from "@formbricks/database";
 
-export async function GET() {
-  const headersList = headers();
+export const GET = async () => {
+  const headersList = await headers();
   const apiKey = headersList.get("x-api-key");
   if (apiKey) {
     const apiKeyData = await prisma.apiKey.findUnique({
@@ -18,13 +17,13 @@ export async function GET() {
             createdAt: true,
             updatedAt: true,
             type: true,
-            product: {
+            project: {
               select: {
                 id: true,
                 name: true,
               },
             },
-            widgetSetupCompleted: true,
+            appSetupCompleted: true,
           },
         },
       },
@@ -34,7 +33,7 @@ export async function GET() {
         status: 401,
       });
     }
-    return NextResponse.json(apiKeyData.environment);
+    return Response.json(apiKeyData.environment);
   } else {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
@@ -45,10 +44,10 @@ export async function GET() {
 
     const user = await prisma.user.findUnique({
       where: {
-        email: sessionUser.email,
+        id: sessionUser.id,
       },
     });
 
-    return NextResponse.json(user);
+    return Response.json(user);
   }
-}
+};

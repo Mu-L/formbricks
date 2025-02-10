@@ -1,16 +1,14 @@
+import { authenticateRequest, handleErrorResponse } from "@/app/api/v1/auth";
 import { responses } from "@/app/lib/api/response";
-import { NextResponse } from "next/server";
-import { deleteActionClass, getActionClass, updateActionClass } from "@formbricks/lib/actionClass/service";
-import { TActionClass, ZActionClassInput } from "@formbricks/types/actionClasses";
-import { authenticateRequest } from "@/app/api/v1/auth";
 import { transformErrorToDetails } from "@/app/lib/api/validator";
+import { deleteActionClass, getActionClass, updateActionClass } from "@formbricks/lib/actionClass/service";
+import { TActionClass, ZActionClassInput } from "@formbricks/types/action-classes";
 import { TAuthenticationApiKey } from "@formbricks/types/auth";
-import { handleErrorResponse } from "@/app/api/v1/auth";
 
-async function fetchAndAuthorizeActionClass(
+const fetchAndAuthorizeActionClass = async (
   authentication: TAuthenticationApiKey,
   actionClassId: string
-): Promise<TActionClass | null> {
+): Promise<TActionClass | null> => {
   const actionClass = await getActionClass(actionClassId);
   if (!actionClass) {
     return null;
@@ -19,12 +17,13 @@ async function fetchAndAuthorizeActionClass(
     throw new Error("Unauthorized");
   }
   return actionClass;
-}
+};
 
-export async function GET(
+export const GET = async (
   request: Request,
-  { params }: { params: { actionClassId: string } }
-): Promise<NextResponse> {
+  props: { params: Promise<{ actionClassId: string }> }
+): Promise<Response> => {
+  const params = await props.params;
   try {
     const authentication = await authenticateRequest(request);
     if (!authentication) return responses.notAuthenticatedResponse();
@@ -36,12 +35,13 @@ export async function GET(
   } catch (error) {
     return handleErrorResponse(error);
   }
-}
+};
 
-export async function PUT(
+export const PUT = async (
   request: Request,
-  { params }: { params: { actionClassId: string } }
-): Promise<NextResponse> {
+  props: { params: Promise<{ actionClassId: string }> }
+): Promise<Response> => {
+  const params = await props.params;
   try {
     const authentication = await authenticateRequest(request);
     if (!authentication) return responses.notAuthenticatedResponse();
@@ -49,8 +49,16 @@ export async function PUT(
     if (!actionClass) {
       return responses.notFoundResponse("Action Class", params.actionClassId);
     }
-    const actionCLassUpdate = await request.json();
-    const inputValidation = ZActionClassInput.safeParse(actionCLassUpdate);
+
+    let actionClassUpdate;
+    try {
+      actionClassUpdate = await request.json();
+    } catch (error) {
+      console.error(`Error parsing JSON: ${error}`);
+      return responses.badRequestResponse("Malformed JSON input, please check your request body");
+    }
+
+    const inputValidation = ZActionClassInput.safeParse(actionClassUpdate);
     if (!inputValidation.success) {
       return responses.badRequestResponse(
         "Fields are missing or incorrectly formatted",
@@ -69,12 +77,13 @@ export async function PUT(
   } catch (error) {
     return handleErrorResponse(error);
   }
-}
+};
 
-export async function DELETE(
+export const DELETE = async (
   request: Request,
-  { params }: { params: { actionClassId: string } }
-): Promise<NextResponse> {
+  props: { params: Promise<{ actionClassId: string }> }
+): Promise<Response> => {
+  const params = await props.params;
   try {
     const authentication = await authenticateRequest(request);
     if (!authentication) return responses.notAuthenticatedResponse();
@@ -85,9 +94,9 @@ export async function DELETE(
     if (actionClass.type === "automatic") {
       return responses.badRequestResponse("Automatic action classes cannot be deleted");
     }
-    const deletedActionClass = await deleteActionClass(authentication.environmentId, params.actionClassId);
+    const deletedActionClass = await deleteActionClass(params.actionClassId);
     return responses.successResponse(deletedActionClass);
   } catch (error) {
     return handleErrorResponse(error);
   }
-}
+};

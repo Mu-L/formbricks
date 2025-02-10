@@ -5,12 +5,14 @@
   "main": "index.ts",
   "sideEffects": false,
   "scripts": {
+    "lint": "eslint . --ext .ts,.js,.tsx,.jsx",
     "clean": "rimraf node_modules .turbo"
   },
   "devDependencies": {
-    "@formbricks/tsconfig": "workspace:*"
+    "@formbricks/config-typescript": "workspace:*",
+    "@formbricks/database": "workspace:*"
   },
   "dependencies": {
-    "zod": "^3.22.4"
+    "zod": "3.24.1"
   }
 }
