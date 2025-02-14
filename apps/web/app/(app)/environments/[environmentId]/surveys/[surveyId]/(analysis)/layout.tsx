@@ -1,19 +1,22 @@
+import { authOptions } from "@/modules/auth/lib/authOptions";
 import { Metadata } from "next";
-import { authOptions } from "@formbricks/lib/authOptions";
 import { getServerSession } from "next-auth";
-import { getAnalysisData } from "@/app/(app)/environments/[environmentId]/surveys/[surveyId]/(analysis)/data";
+import { getResponseCountBySurveyId } from "@formbricks/lib/response/service";
+import { getSurvey } from "@formbricks/lib/survey/service";
 
 type Props = {
-  params: { surveyId: string; environmentId: string };
+  params: Promise<{ surveyId: string; environmentId: string }>;
 };
 
-export const generateMetadata = async ({ params }: Props): Promise<Metadata> => {
+export const generateMetadata = async (props: Props): Promise<Metadata> => {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
+  const survey = await getSurvey(params.surveyId);
+  const responseCount = await getResponseCountBySurveyId(params.surveyId);
 
   if (session) {
-    const { responseCount } = await getAnalysisData(params.surveyId, params.environmentId);
     return {
-      title: `${responseCount} Responses`,
+      title: `${responseCount} Responses | ${survey?.name} Results`,
     };
   }
   return {
@@ -21,8 +24,8 @@ export const generateMetadata = async ({ params }: Props): Promise<Metadata> => 
   };
 };
 
-const SurveyLayout = ({ children }) => {
-  return <div>{children}</div>;
+const SurveyLayout = async ({ children }) => {
+  return <>{children}</>;
 };
 
 export default SurveyLayout;

@@ -1,10 +1,15 @@
-import LegalFooter from "@/app/s/[surveyId]/components/LegalFooter";
+import { Viewport } from "next";
 
-export default async function SurveyLayout({ children }) {
-  return (
-    <div className="flex h-full flex-col justify-between bg-white">
-      <div className="h-full overflow-y-auto">{children}</div>
-      <LegalFooter />
-    </div>
-  );
-}
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1.0,
+  maximumScale: 1.0,
+  userScalable: false,
+  viewportFit: "contain",
+};
+
+const SurveyLayout = ({ children }) => {
+  return <div className="h-dvh">{children}</div>;
+};
+
+export default SurveyLayout;

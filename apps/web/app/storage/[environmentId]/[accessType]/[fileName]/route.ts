@@ -1,17 +1,19 @@
-import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
+import { authenticateRequest } from "@/app/api/v1/auth";
 import { responses } from "@/app/lib/api/response";
 import { transformErrorToDetails } from "@/app/lib/api/validator";
+import { handleDeleteFile } from "@/app/storage/[environmentId]/[accessType]/[fileName]/lib/delete-file";
+import { authOptions } from "@/modules/auth/lib/authOptions";
+import { getServerSession } from "next-auth";
+import { type NextRequest } from "next/server";
 import { hasUserEnvironmentAccess } from "@formbricks/lib/environment/auth";
 import { ZStorageRetrievalParams } from "@formbricks/types/storage";
-import { getServerSession } from "next-auth";
-import { NextRequest } from "next/server";
-import getFile from "./lib/getFile";
-import { handleDeleteFile } from "@/app/storage/[environmentId]/[accessType]/[fileName]/lib/deleteFile";
+import { getFile } from "./lib/get-file";
 
-export async function GET(
-  _: NextRequest,
-  { params }: { params: { environmentId: string; accessType: string; fileName: string } }
-) {
+export const GET = async (
+  request: NextRequest,
+  props: { params: Promise<{ environmentId: string; accessType: string; fileName: string }> }
+): Promise<Response> => {
+  const params = await props.params;
   const paramValidation = ZStorageRetrievalParams.safeParse(params);
 
   if (!paramValidation.success) {
@@ -22,18 +24,27 @@ export async function GET(
     );
   }
 
-  const { environmentId, accessType, fileName } = params;
+  const { environmentId, accessType, fileName: fileNameOG } = params;
+
+  const fileName = decodeURIComponent(fileNameOG);
 
   if (accessType === "public") {
     return await getFile(environmentId, accessType, fileName);
   }
 
-  // auth and download private file
+  // if the user is authenticated via the session
 
   const session = await getServerSession(authOptions);
 
-  if (!session || !session.user) {
-    return responses.notAuthenticatedResponse();
+  if (!session?.user) {
+    // check for api key auth
+    const res = await authenticateRequest(request);
+
+    if (!res) {
+      return responses.notAuthenticatedResponse();
+    }
+
+    return await getFile(environmentId, accessType, fileName);
   }
 
   const isUserAuthorized = await hasUserEnvironmentAccess(session.user.id, environmentId);
@@ -43,9 +54,13 @@ export async function GET(
   }
 
   return await getFile(environmentId, accessType, fileName);
-}
+};
 
-export async function DELETE(_: NextRequest, { params }: { params: { fileName: string } }) {
+export const DELETE = async (
+  _: NextRequest,
+  props: { params: Promise<{ fileName: string }> }
+): Promise<Response> => {
+  const params = await props.params;
   if (!params.fileName) {
     return responses.badRequestResponse("Fields are missing or incorrectly formatted", {
       fileName: "fileName is required",
@@ -67,7 +82,7 @@ export async function DELETE(_: NextRequest, { params }: { params: { fileName: s
 
   const session = await getServerSession(authOptions);
 
-  if (!session || !session.user) {
+  if (!session?.user) {
     return responses.notAuthenticatedResponse();
   }
 
@@ -84,4 +99,4 @@ export async function DELETE(_: NextRequest, { params }: { params: { fileName: s
     paramValidation.data.accessType,
     paramValidation.data.fileName
   );
-}
+};

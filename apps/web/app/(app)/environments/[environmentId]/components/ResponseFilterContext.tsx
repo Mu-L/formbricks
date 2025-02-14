@@ -6,9 +6,9 @@ import {
 } from "@/app/(app)/environments/[environmentId]/surveys/[surveyId]/components/QuestionsComboBox";
 import { QuestionFilterOptions } from "@/app/(app)/environments/[environmentId]/surveys/[surveyId]/components/ResponseFilter";
 import { getTodayDate } from "@/app/lib/surveys/surveys";
-import { createContext, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useState } from "react";
 
-interface FilterValue {
+export interface FilterValue {
   questionType: Partial<QuestionOption>;
   filterType: {
     filterValue: string | undefined;
@@ -43,7 +43,7 @@ interface FilterDateContextProps {
 
 const ResponseFilterContext = createContext<FilterDateContextProps | undefined>(undefined);
 
-function ResponseFilterProvider({ children }: { children: React.ReactNode }) {
+const ResponseFilterProvider = ({ children }: { children: React.ReactNode }) => {
   // state holds the filter selected value
   const [selectedFilter, setSelectedFilter] = useState<SelectedFilterValue>({
     filter: [],
@@ -60,7 +60,7 @@ function ResponseFilterProvider({ children }: { children: React.ReactNode }) {
     to: getTodayDate(),
   });
 
-  const resetState = () => {
+  const resetState = useCallback(() => {
     setDateRange({
       from: undefined,
       to: getTodayDate(),
@@ -69,7 +69,7 @@ function ResponseFilterProvider({ children }: { children: React.ReactNode }) {
       filter: [],
       onlyComplete: false,
     });
-  };
+  }, []);
 
   return (
     <ResponseFilterContext.Provider
@@ -85,14 +85,14 @@ function ResponseFilterProvider({ children }: { children: React.ReactNode }) {
       {children}
     </ResponseFilterContext.Provider>
   );
-}
+};
 
-function useResponseFilter() {
+const useResponseFilter = () => {
   const context = useContext(ResponseFilterContext);
   if (context === undefined) {
     throw new Error("useFilterDate must be used within a FilterDateProvider");
   }
   return context;
-}
+};
 
 export { ResponseFilterContext, ResponseFilterProvider, useResponseFilter };

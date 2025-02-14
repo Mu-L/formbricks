@@ -1,20 +1,18 @@
+import { authenticateRequest, handleErrorResponse } from "@/app/api/v1/auth";
 import { responses } from "@/app/lib/api/response";
-import { NextResponse } from "next/server";
 import { transformErrorToDetails } from "@/app/lib/api/validator";
-import { deleteResponse, getResponse, updateResponse } from "@formbricks/lib/response/service";
-import { TResponse, ZResponseUpdateInput } from "@formbricks/types/responses";
 import { hasUserEnvironmentAccess } from "@formbricks/lib/environment/auth";
+import { deleteResponse, getResponse, updateResponse } from "@formbricks/lib/response/service";
 import { getSurvey } from "@formbricks/lib/survey/service";
-import { authenticateRequest } from "@/app/api/v1/auth";
-import { handleErrorResponse } from "@/app/api/v1/auth";
+import { TResponse, ZResponseUpdateInput } from "@formbricks/types/responses";
 
-async function fetchAndValidateResponse(authentication: any, responseId: string): Promise<TResponse> {
+const fetchAndValidateResponse = async (authentication: any, responseId: string): Promise<TResponse> => {
   const response = await getResponse(responseId);
   if (!response || !(await canUserAccessResponse(authentication, response))) {
     throw new Error("Unauthorized");
   }
   return response;
-}
+};
 
 const canUserAccessResponse = async (authentication: any, response: TResponse): Promise<boolean> => {
   const survey = await getSurvey(response.surveyId);
@@ -29,14 +27,14 @@ const canUserAccessResponse = async (authentication: any, response: TResponse): 
   }
 };
 
-export async function GET(
+export const GET = async (
   request: Request,
-  { params }: { params: { responseId: string } }
-): Promise<NextResponse> {
+  props: { params: Promise<{ responseId: string }> }
+): Promise<Response> => {
+  const params = await props.params;
   try {
     const authentication = await authenticateRequest(request);
     if (!authentication) return responses.notAuthenticatedResponse();
-    await fetchAndValidateResponse(authentication, params.responseId);
     const response = await fetchAndValidateResponse(authentication, params.responseId);
     if (response) {
       return responses.successResponse(response);
@@ -45,12 +43,13 @@ export async function GET(
   } catch (error) {
     return handleErrorResponse(error);
   }
-}
+};
 
-export async function DELETE(
+export const DELETE = async (
   request: Request,
-  { params }: { params: { responseId: string } }
-): Promise<NextResponse> {
+  props: { params: Promise<{ responseId: string }> }
+): Promise<Response> => {
+  const params = await props.params;
   try {
     const authentication = await authenticateRequest(request);
     if (!authentication) return responses.notAuthenticatedResponse();
@@ -63,17 +62,25 @@ export async function DELETE(
   } catch (error) {
     return handleErrorResponse(error);
   }
-}
+};
 
-export async function PUT(
+export const PUT = async (
   request: Request,
-  { params }: { params: { responseId: string } }
-): Promise<NextResponse> {
+  props: { params: Promise<{ responseId: string }> }
+): Promise<Response> => {
+  const params = await props.params;
   try {
     const authentication = await authenticateRequest(request);
     if (!authentication) return responses.notAuthenticatedResponse();
     await fetchAndValidateResponse(authentication, params.responseId);
-    const responseUpdate = await request.json();
+    let responseUpdate;
+    try {
+      responseUpdate = await request.json();
+    } catch (error) {
+      console.error(`Error parsing JSON: ${error}`);
+      return responses.badRequestResponse("Malformed JSON input, please check your request body");
+    }
+
     const inputValidation = ZResponseUpdateInput.safeParse(responseUpdate);
     if (!inputValidation.success) {
       return responses.badRequestResponse(
@@ -85,4 +92,4 @@ export async function PUT(
   } catch (error) {
     return handleErrorResponse(error);
   }
-}
+};

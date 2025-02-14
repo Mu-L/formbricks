@@ -1,6 +1,9 @@
 import "server-only";
-
+import { Prisma } from "@prisma/client";
+import { cache as reactCache } from "react";
+import { z } from "zod";
 import { prisma } from "@formbricks/database";
+import { ZId } from "@formbricks/types/common";
 import type {
   TEnvironment,
   TEnvironmentCreateInput,
@@ -10,102 +13,91 @@ import {
   ZEnvironment,
   ZEnvironmentCreateInput,
   ZEnvironmentUpdateInput,
-  ZId,
 } from "@formbricks/types/environment";
 import { DatabaseError, ResourceNotFoundError, ValidationError } from "@formbricks/types/errors";
-import { Prisma } from "@prisma/client";
-import { unstable_cache } from "next/cache";
-import "server-only";
-import { z } from "zod";
-import { SERVICES_REVALIDATION_INTERVAL } from "../constants";
+import { cache } from "../cache";
+import { getOrganizationsByUserId } from "../organization/service";
+import { capturePosthogEnvironmentEvent } from "../posthogServer";
+import { getUserProjects } from "../project/service";
 import { validateInputs } from "../utils/validate";
 import { environmentCache } from "./cache";
-import { formatEnvironmentDateFields } from "./util";
 
-export const getEnvironment = (environmentId: string) =>
-  unstable_cache(
-    async (): Promise<TEnvironment> => {
-      validateInputs([environmentId, ZId]);
-      let environmentPrisma;
+export const getEnvironment = reactCache(
+  async (environmentId: string): Promise<TEnvironment | null> =>
+    cache(
+      async () => {
+        validateInputs([environmentId, ZId]);
 
-      try {
-        environmentPrisma = await prisma.environment.findUnique({
-          where: {
-            id: environmentId,
-          },
-        });
-      } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          console.error(error);
-          throw new DatabaseError(error.message);
+        try {
+          const environment = await prisma.environment.findUnique({
+            where: {
+              id: environmentId,
+            },
+          });
+          return environment;
+        } catch (error) {
+          if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            console.error(error);
+            throw new DatabaseError(error.message);
+          }
+
+          throw error;
+        }
+      },
+      [`getEnvironment-${environmentId}`],
+      {
+        tags: [environmentCache.tag.byId(environmentId)],
+      }
+    )()
+);
+
+export const getEnvironments = reactCache(
+  async (projectId: string): Promise<TEnvironment[]> =>
+    cache(
+      async (): Promise<TEnvironment[]> => {
+        validateInputs([projectId, ZId]);
+        let projectPrisma;
+        try {
+          projectPrisma = await prisma.project.findFirst({
+            where: {
+              id: projectId,
+            },
+            include: {
+              environments: true,
+            },
+          });
+
+          if (!projectPrisma) {
+            throw new ResourceNotFoundError("Project", projectId);
+          }
+        } catch (error) {
+          if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            throw new DatabaseError(error.message);
+          }
+          throw error;
         }
 
-        throw error;
-      }
-
-      try {
-        const environment = ZEnvironment.parse(environmentPrisma);
-        return environment;
-      } catch (error) {
-        if (error instanceof z.ZodError) {
-          console.error(JSON.stringify(error.errors, null, 2));
+        const environments: TEnvironment[] = [];
+        for (let environment of projectPrisma.environments) {
+          let targetEnvironment: TEnvironment = ZEnvironment.parse(environment);
+          environments.push(targetEnvironment);
         }
-        throw new ValidationError("Data validation of environment failed");
-      }
-    },
-    [`getEnvironment-${environmentId}`],
-    {
-      tags: [environmentCache.tag.byId(environmentId)],
-      revalidate: SERVICES_REVALIDATION_INTERVAL,
-    }
-  )();
 
-export const getEnvironments = async (productId: string): Promise<TEnvironment[]> =>
-  unstable_cache(
-    async (): Promise<TEnvironment[]> => {
-      validateInputs([productId, ZId]);
-      let productPrisma;
-      try {
-        productPrisma = await prisma.product.findFirst({
-          where: {
-            id: productId,
-          },
-          include: {
-            environments: true,
-          },
-        });
-
-        if (!productPrisma) {
-          throw new ResourceNotFoundError("Product", productId);
+        try {
+          return environments;
+        } catch (error) {
+          if (error instanceof z.ZodError) {
+            console.error(JSON.stringify(error.errors, null, 2));
+          }
+          throw new ValidationError("Data validation of environments array failed");
         }
-      } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          throw new DatabaseError(error.message);
-        }
-        throw error;
+      },
+      [`getEnvironments-${projectId}`],
+      {
+        tags: [environmentCache.tag.byProjectId(projectId)],
       }
-
-      const environments: TEnvironment[] = [];
-      for (let environment of productPrisma.environments) {
-        let targetEnvironment: TEnvironment = ZEnvironment.parse(environment);
-        environments.push(targetEnvironment);
-      }
-
-      try {
-        return environments;
-      } catch (error) {
-        if (error instanceof z.ZodError) {
-          console.error(JSON.stringify(error.errors, null, 2));
-        }
-        throw new ValidationError("Data validation of environments array failed");
-      }
-    },
-    [`getEnvironments-${productId}`],
-    {
-      tags: [environmentCache.tag.byProductId(productId)],
-      revalidate: SERVICES_REVALIDATION_INTERVAL,
-    }
-  )();
+    )()
+);
 
 export const updateEnvironment = async (
   environmentId: string,
@@ -124,7 +116,7 @@ export const updateEnvironment = async (
 
     environmentCache.revalidate({
       id: environmentId,
-      productId: updatedEnvironment.productId,
+      projectId: updatedEnvironment.projectId,
     });
 
     return updatedEnvironment;
@@ -136,86 +128,98 @@ export const updateEnvironment = async (
   }
 };
 
-export const getFirstEnvironmentByUserId = async (userId: string): Promise<TEnvironment | null> => {
-  const environment = await unstable_cache(
-    async () => {
-      validateInputs([userId, ZId]);
-      try {
-        return await prisma.environment.findFirst({
-          where: {
-            type: "production",
-            product: {
-              team: {
-                memberships: {
-                  some: {
-                    userId,
-                  },
-                },
-              },
-            },
-          },
-        });
-      } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          throw new DatabaseError(error.message);
-        }
-
-        throw error;
-      }
-    },
-    [`getFirstEnvironmentByUserId-${userId}`],
-    {
-      tags: [environmentCache.tag.byUserId(userId)],
-      revalidate: SERVICES_REVALIDATION_INTERVAL,
+export const getFirstEnvironmentIdByUserId = async (userId: string): Promise<string | null> => {
+  try {
+    const organizations = await getOrganizationsByUserId(userId);
+    if (organizations.length === 0) {
+      return null;
     }
-  )();
-
-  return environment ? formatEnvironmentDateFields(environment) : environment;
+    const firstOrganization = organizations[0];
+    const projects = await getUserProjects(userId, firstOrganization.id);
+    if (projects.length === 0) {
+      return null;
+    }
+    const firstProject = projects[0];
+    const productionEnvironment = firstProject.environments.find(
+      (environment) => environment.type === "production"
+    );
+    if (!productionEnvironment) {
+      return null;
+    }
+    return productionEnvironment.id;
+  } catch (error) {
+    throw error;
+  }
 };
 
 export const createEnvironment = async (
-  productId: string,
+  projectId: string,
   environmentInput: Partial<TEnvironmentCreateInput>
 ): Promise<TEnvironment> => {
-  validateInputs([productId, ZId], [environmentInput, ZEnvironmentCreateInput]);
+  validateInputs([projectId, ZId], [environmentInput, ZEnvironmentCreateInput]);
 
-  const environment = await prisma.environment.create({
-    data: {
-      type: environmentInput.type || "development",
-      product: { connect: { id: productId } },
-      widgetSetupCompleted: environmentInput.widgetSetupCompleted || false,
-      eventClasses: {
-        create: [
-          {
-            name: "New Session",
-            description: "Gets fired when a new session is created",
-            type: "automatic",
-          },
-          {
-            name: "Exit Intent (Desktop)",
-            description: "A user on Desktop leaves the website with the cursor.",
-            type: "automatic",
-          },
-          {
-            name: "50% Scroll",
-            description: "A user scrolled 50% of the current page",
-            type: "automatic",
-          },
-        ],
+  try {
+    const environment = await prisma.environment.create({
+      data: {
+        type: environmentInput.type || "development",
+        project: { connect: { id: projectId } },
+        appSetupCompleted: environmentInput.appSetupCompleted || false,
+        actionClasses: {
+          create: [
+            {
+              name: "New Session",
+              description: "Gets fired when a new session is created",
+              type: "automatic",
+            },
+          ],
+        },
+        attributeKeys: {
+          create: [
+            {
+              key: "userId",
+              name: "User Id",
+              description: "The user id of a contact",
+              type: "default",
+              isUnique: true,
+            },
+            {
+              key: "email",
+              name: "Email",
+              description: "The email of a contact",
+              type: "default",
+              isUnique: true,
+            },
+            {
+              key: "firstName",
+              name: "First Name",
+              description: "Your contact's first name",
+              type: "default",
+            },
+            {
+              key: "lastName",
+              name: "Last Name",
+              description: "Your contact's last name",
+              type: "default",
+            },
+          ],
+        },
       },
-      attributeClasses: {
-        create: [
-          { name: "userId", description: "The internal ID of the person", type: "automatic" },
-          { name: "email", description: "The email of the person", type: "automatic" },
-        ],
-      },
-    },
-  });
+    });
 
-  environmentCache.revalidate({
-    id: environment.id,
-    productId: environment.productId,
-  });
+    environmentCache.revalidate({
+      id: environment.id,
+      projectId: environment.projectId,
+    });
 
-  return environment;
+    await capturePosthogEnvironmentEvent(environment.id, "environment created", {
+      environmentType: environment.type,
+    });
+
+    return environment;
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      throw new DatabaseError(error.message);
+    }
+    throw error;
+  }
 };

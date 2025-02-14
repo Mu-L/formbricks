@@ -1,71 +1,20 @@
-import { TJsConfigInput } from "@formbricks/types/js";
-import { getApi } from "./lib/api";
-import { CommandQueue } from "./lib/commandQueue";
-import { ErrorHandler } from "./lib/errors";
-import { trackAction } from "./lib/actions";
-import { initialize } from "./lib/initialize";
-import { Logger } from "./lib/logger";
-import { checkPageUrl } from "./lib/noCodeActions";
-import { resetPerson, setPersonAttribute, setPersonUserId, getPerson, logoutPerson } from "./lib/person";
+import type Formbricks from "@formbricks/js-core";
+import { loadFormbricksToProxy } from "./lib/load-formbricks";
 
-const logger = Logger.getInstance();
+type TFormbricks = typeof Formbricks;
+declare global {
+  interface Window {
+    formbricks: TFormbricks | undefined;
+  }
+}
 
-logger.debug("Create command queue");
-const queue = new CommandQueue();
-
-const init = async (initConfig: TJsConfigInput) => {
-  ErrorHandler.init(initConfig.errorHandler);
-  queue.add(false, initialize, initConfig);
-  await queue.wait();
+const formbricksProxyHandler: ProxyHandler<TFormbricks> = {
+  get(_target, prop, _receiver) {
+    return (...args: unknown[]) => loadFormbricksToProxy(prop as string, ...args);
+  },
 };
 
-const setUserId = async (userId: string | number): Promise<void> => {
-  queue.add(true, setPersonUserId, userId);
-  await queue.wait();
-};
+const formbricks: TFormbricks = new Proxy({} as TFormbricks, formbricksProxyHandler);
 
-const setEmail = async (email: string): Promise<void> => {
-  setAttribute("email", email);
-  await queue.wait();
-};
-
-const setAttribute = async (key: string, value: any): Promise<void> => {
-  queue.add(true, setPersonAttribute, key, value);
-  await queue.wait();
-};
-
-const logout = async (): Promise<void> => {
-  queue.add(true, logoutPerson);
-  await queue.wait();
-};
-
-const reset = async (): Promise<void> => {
-  queue.add(true, resetPerson);
-  await queue.wait();
-};
-
-const track = async (name: string, properties: any = {}): Promise<void> => {
-  queue.add<any>(true, trackAction, name, properties);
-  await queue.wait();
-};
-
-const registerRouteChange = async (): Promise<void> => {
-  queue.add(true, checkPageUrl);
-  await queue.wait();
-};
-
-const formbricks = {
-  init,
-  setUserId,
-  setEmail,
-  setAttribute,
-  track,
-  logout,
-  reset,
-  registerRouteChange,
-  getApi,
-  getPerson,
-};
-
-export type FormbricksType = typeof formbricks;
-export default formbricks as FormbricksType;
+// eslint-disable-next-line import/no-default-export -- Required for UMD
+export default formbricks;
