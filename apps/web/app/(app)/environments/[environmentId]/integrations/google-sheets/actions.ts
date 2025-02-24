@@ -1,38 +1,25 @@
 "use server";
 
-import { authOptions } from "@/app/api/auth/[...nextauth]/authOptions";
-import { getSpreadSheets } from "@formbricks/lib/googleSheet/service";
-import { createOrUpdateIntegration, deleteIntegration } from "@formbricks/lib/integration/service";
+import { authOptions } from "@/modules/auth/lib/authOptions";
 import { getServerSession } from "next-auth";
-
 import { hasUserEnvironmentAccess } from "@formbricks/lib/environment/auth";
-import { canUserAccessIntegration } from "@formbricks/lib/integration/auth";
+import { getSpreadsheetNameById } from "@formbricks/lib/googleSheet/service";
 import { AuthorizationError } from "@formbricks/types/errors";
-import { TIntegrationGoogleSheetsInput } from "@formbricks/types/integration/googleSheet";
+import { TIntegrationGoogleSheets } from "@formbricks/types/integration/google-sheet";
 
-export async function createOrUpdateIntegrationAction(
+export async function getSpreadsheetNameByIdAction(
+  googleSheetIntegration: TIntegrationGoogleSheets,
   environmentId: string,
-  integrationData: TIntegrationGoogleSheetsInput
+  spreadsheetId: string
 ) {
-  return await createOrUpdateIntegration(environmentId, integrationData);
-}
-
-export async function deleteIntegrationAction(integrationId: string) {
-  const session = await getServerSession(authOptions);
-  if (!session) throw new AuthorizationError("Not authorized");
-
-  const isAuthorized = await canUserAccessIntegration(session.user.id, integrationId);
-  if (!isAuthorized) throw new AuthorizationError("Not authorized");
-
-  return await deleteIntegration(integrationId);
-}
-
-export async function refreshSheetAction(environmentId: string) {
   const session = await getServerSession(authOptions);
   if (!session) throw new AuthorizationError("Not authorized");
 
   const isAuthorized = await hasUserEnvironmentAccess(session.user.id, environmentId);
   if (!isAuthorized) throw new AuthorizationError("Not authorized");
-
-  return await getSpreadSheets(environmentId);
+  const integrationData = structuredClone(googleSheetIntegration);
+  integrationData.config.data.forEach((data) => {
+    data.createdAt = new Date(data.createdAt);
+  });
+  return await getSpreadsheetNameById(integrationData, spreadsheetId);
 }

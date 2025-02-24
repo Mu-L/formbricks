@@ -1,15 +1,15 @@
-import { PHProvider, PostHogPageview } from "@formbricks/ui/PostHogClient";
-import { Suspense } from "react";
-import { NoMobileOverlay } from "@formbricks/ui/NoMobileOverlay";
+import { IntercomClient } from "@/app/IntercomClient";
+import { NoMobileOverlay } from "@/modules/ui/components/no-mobile-overlay";
+import { INTERCOM_SECRET_KEY, IS_INTERCOM_CONFIGURED } from "@formbricks/lib/constants";
 
-export default function AppLayout({ children }) {
+const AppLayout = async ({ children }) => {
   return (
     <>
       <NoMobileOverlay />
-      <Suspense>
-        <PostHogPageview />
-      </Suspense>
-      <PHProvider>{children}</PHProvider>
+      <IntercomClient isIntercomConfigured={IS_INTERCOM_CONFIGURED} intercomSecretKey={INTERCOM_SECRET_KEY} />
+      {children}
     </>
   );
-}
+};
+
+export default AppLayout;

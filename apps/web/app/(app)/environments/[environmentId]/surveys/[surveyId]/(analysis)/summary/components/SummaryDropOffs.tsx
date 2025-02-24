@@ -1,122 +1,93 @@
-import { evaluateCondition } from "@/app/(app)/environments/[environmentId]/surveys/[surveyId]/(analysis)/summary/components/evaluateLogic";
-import { TResponse } from "@formbricks/types/responses";
-import { TSurvey } from "@formbricks/types/surveys";
-import { useMemo } from "react";
+"use client";
+
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/modules/ui/components/tooltip";
+import { useTranslate } from "@tolgee/react";
+import { TimerIcon } from "lucide-react";
+import { JSX } from "react";
+import { getQuestionIcon } from "@formbricks/lib/utils/questions";
+import { recallToHeadline } from "@formbricks/lib/utils/recall";
+import { TSurvey, TSurveyQuestionType, TSurveySummary } from "@formbricks/types/surveys/types";
 
 interface SummaryDropOffsProps {
+  dropOff: TSurveySummary["dropOff"];
   survey: TSurvey;
-  responses: TResponse[];
-  displayCount: number;
 }
 
-export default function SummaryDropOffs({ responses, survey, displayCount }: SummaryDropOffsProps) {
-  const getDropoff = () => {
-    let dropoffArr = new Array(survey.questions.length).fill(0);
-    let viewsArr = new Array(survey.questions.length).fill(0);
-    let dropoffPercentageArr = new Array(survey.questions.length).fill(0);
-
-    responses.forEach((response) => {
-      let currQuesIdx = 0;
-
-      while (currQuesIdx < survey.questions.length) {
-        const currQues = survey.questions[currQuesIdx];
-        if (!currQues) break;
-
-        if (!currQues.required) {
-          if (!response.data[currQues.id]) {
-            viewsArr[currQuesIdx]++;
-
-            if (currQuesIdx === survey.questions.length - 1 && !response.finished) {
-              dropoffArr[currQuesIdx]++;
-              break;
-            }
-
-            const questionHasCustomLogic = currQues.logic;
-            if (questionHasCustomLogic) {
-              let didLogicPass = false;
-              for (let logic of questionHasCustomLogic) {
-                if (!logic.destination) continue;
-                if (evaluateCondition(logic, response.data[currQues.id] ?? null)) {
-                  didLogicPass = true;
-                  currQuesIdx = survey.questions.findIndex((q) => q.id === logic.destination);
-                  break;
-                }
-              }
-              if (!didLogicPass) currQuesIdx++;
-            } else {
-              currQuesIdx++;
-            }
-            continue;
-          }
-        }
-
-        if (
-          (response.data[currQues.id] === undefined && !response.finished) ||
-          (currQues.required && !response.data[currQues.id])
-        ) {
-          dropoffArr[currQuesIdx]++;
-          viewsArr[currQuesIdx]++;
-          break;
-        }
-
-        viewsArr[currQuesIdx]++;
-
-        let nextQuesIdx = currQuesIdx + 1;
-        const questionHasCustomLogic = currQues.logic;
-
-        if (questionHasCustomLogic) {
-          for (let logic of questionHasCustomLogic) {
-            if (!logic.destination) continue;
-            if (evaluateCondition(logic, response.data[currQues.id])) {
-              nextQuesIdx = survey.questions.findIndex((q) => q.id === logic.destination);
-              break;
-            }
-          }
-        }
-
-        if (!response.data[survey.questions[nextQuesIdx]?.id] && !response.finished) {
-          dropoffArr[nextQuesIdx]++;
-          viewsArr[nextQuesIdx]++;
-          break;
-        }
-
-        currQuesIdx = nextQuesIdx;
-      }
-    });
-
-    dropoffPercentageArr[0] = (dropoffArr[0] / displayCount) * 100 || 0;
-    for (let i = 1; i < survey.questions.length; i++) {
-      if (viewsArr[i - 1] !== 0) {
-        dropoffPercentageArr[i] = (dropoffArr[i] / viewsArr[i - 1]) * 100;
-      }
-    }
-
-    return [dropoffArr, viewsArr, dropoffPercentageArr];
+export const SummaryDropOffs = ({ dropOff, survey }: SummaryDropOffsProps) => {
+  const { t } = useTranslate();
+  const getIcon = (questionType: TSurveyQuestionType) => {
+    const Icon = getQuestionIcon(questionType, t);
+    return <Icon className="mt-[3px] h-5 w-5 shrink-0 text-slate-600" />;
   };
 
-  const [dropoffCount, viewsCount, dropoffPercentage] = useMemo(() => getDropoff(), [responses]);
+  const formatTextWithSlashes = (text: string): (string | JSX.Element)[] => {
+    const regex = /\/(.*?)\\/g;
+    const parts = text.split(regex);
+
+    return parts.map((part, index) => {
+      // Check if the part was inside slashes
+      if (index % 2 !== 0) {
+        return (
+          <span key={index} className="mx-1 rounded-md bg-slate-100 p-1 px-2 text-lg">
+            @{part}
+          </span>
+        );
+      } else {
+        return part;
+      }
+    });
+  };
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 shadow-sm">
-      <div className="rounded-b-lg bg-white ">
-        <div className="grid h-10 grid-cols-5 items-center border-y border-slate-200 bg-slate-100 text-sm font-bold text-slate-600">
-          <div className="col-span-3 pl-4 md:pl-6">Questions</div>
-          <div className="pl-4 text-center md:pl-6">Views</div>
-          <div className="px-4 text-center md:px-6">Drop-off</div>
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="">
+        <div className="grid h-10 grid-cols-6 items-center border-y border-slate-200 bg-slate-100 text-sm font-semibold text-slate-600">
+          <div className="col-span-3 pl-4 md:pl-6">{t("common.questions")}</div>
+          <div className="flex justify-center">
+            <TooltipProvider delayDuration={50}>
+              <Tooltip>
+                <TooltipTrigger>
+                  <TimerIcon className="h-5 w-5" />
+                </TooltipTrigger>
+                <TooltipContent side={"top"}>
+                  <p className="text-center font-normal">{t("environments.surveys.summary.ttc_tooltip")}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <div className="px-4 text-center md:px-6">{t("environments.surveys.summary.impressions")}</div>
+          <div className="pr-6 text-center md:pl-6">{t("environments.surveys.summary.drop_offs")}</div>
         </div>
-        {survey.questions.map((question, i) => (
+        {dropOff.map((quesDropOff) => (
           <div
-            key={question.id}
-            className="grid grid-cols-5 items-center border-b border-slate-100 py-2 text-sm text-slate-800 md:text-base">
-            <div className="col-span-3 pl-4 md:pl-6">{question.headline}</div>
-            <div className="whitespace-pre-wrap pl-6 text-center font-semibold">{viewsCount[i]}</div>
-            <div className="px-4 text-center md:px-6">
-              <span className="font-semibold">{dropoffCount[i]} </span>
-              <span>({Math.round(dropoffPercentage[i])}%)</span>
+            key={quesDropOff.questionId}
+            className="grid grid-cols-6 items-center border-b border-slate-100 py-2 text-sm text-slate-800 md:text-base">
+            <div className="col-span-3 flex gap-3 pl-4 md:pl-6">
+              {getIcon(quesDropOff.questionType)}
+              <p>
+                {formatTextWithSlashes(
+                  recallToHeadline(
+                    {
+                      ["default"]: quesDropOff.headline,
+                    },
+                    survey,
+                    true,
+                    "default"
+                  )["default"]
+                )}
+              </p>
+            </div>
+            <div className="whitespace-pre-wrap text-center font-semibold">
+              {quesDropOff.ttc > 0 ? (quesDropOff.ttc / 1000).toFixed(2) + "s" : "N/A"}
+            </div>
+            <div className="whitespace-pre-wrap text-center font-semibold">{quesDropOff.impressions}</div>
+            <div className="pl-6 text-center md:px-6">
+              <span className="mr-1.5 font-semibold">{quesDropOff.dropOffCount}</span>
+              <span>({Math.round(quesDropOff.dropOffPercentage)}%)</span>
             </div>
           </div>
         ))}
       </div>
     </div>
   );
-}
+};

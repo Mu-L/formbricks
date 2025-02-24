@@ -1,113 +1,172 @@
 "use client";
 
-import LinkTab from "./shareEmbedTabs/LinkTab";
-import EmailTab from "./shareEmbedTabs/EmailTab";
-import WebpageTab from "./shareEmbedTabs/WebpageTab";
-import LinkSingleUseSurveyModal from "@/app/(app)/environments/[environmentId]/surveys/[surveyId]/(analysis)/summary/components/LinkSingleUseSurveyModal";
-import { useMemo, useState } from "react";
-import { TProduct } from "@formbricks/types/product";
-import { TSurvey } from "@formbricks/types/surveys";
-import { cn } from "@formbricks/lib/cn";
-import { DialogContent, Dialog } from "@formbricks/ui/Dialog";
-import { Button } from "@formbricks/ui/Button";
-import { LinkIcon, EnvelopeIcon, CodeBracketIcon } from "@heroicons/react/24/outline";
-import { TProfile } from "@formbricks/types/profile";
+import { ShareSurveyLink } from "@/modules/analysis/components/ShareSurveyLink";
+import { Badge } from "@/modules/ui/components/badge";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/modules/ui/components/dialog";
+import { useTranslate } from "@tolgee/react";
+import {
+  BellRing,
+  BlocksIcon,
+  Code2Icon,
+  LinkIcon,
+  MailIcon,
+  SmartphoneIcon,
+  UsersRound,
+} from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { TSurvey } from "@formbricks/types/surveys/types";
+import { TUser } from "@formbricks/types/user";
+import { EmbedView } from "./shareEmbedModal/EmbedView";
+import { PanelInfoView } from "./shareEmbedModal/PanelInfoView";
 
 interface ShareEmbedSurveyProps {
   survey: TSurvey;
   open: boolean;
+  modalView: "start" | "embed" | "panel";
   setOpen: React.Dispatch<React.SetStateAction<boolean>>;
   webAppUrl: string;
-  product: TProduct;
-  profile: TProfile;
+  user: TUser;
 }
-export default function ShareEmbedSurvey({
+
+export const ShareEmbedSurvey = ({
   survey,
   open,
+  modalView,
   setOpen,
   webAppUrl,
-  product,
-  profile,
-}: ShareEmbedSurveyProps) {
-  const surveyUrl = useMemo(() => webAppUrl + "/s/" + survey.id, [survey]);
-  const isSingleUseLinkSurvey = survey.singleUse?.enabled;
-  const { email } = profile;
-  const { brandColor } = product;
-  const surveyBrandColor = survey.productOverwrites?.brandColor || brandColor;
+  user,
+}: ShareEmbedSurveyProps) => {
+  const router = useRouter();
+  const environmentId = survey.environmentId;
+  const isSingleUseLinkSurvey = survey.singleUse?.enabled ?? false;
+  const { email } = user;
+  const { t } = useTranslate();
+  const tabs = useMemo(
+    () =>
+      [
+        { id: "email", label: t("environments.surveys.summary.embed_in_an_email"), icon: MailIcon },
+        { id: "webpage", label: t("environments.surveys.summary.embed_on_website"), icon: Code2Icon },
+        {
+          id: "link",
+          label: `${isSingleUseLinkSurvey ? t("environments.surveys.summary.single_use_links") : t("environments.surveys.summary.share_the_link")}`,
+          icon: LinkIcon,
+        },
+        { id: "app", label: t("environments.surveys.summary.embed_in_app"), icon: SmartphoneIcon },
+      ].filter((tab) => !(survey.type === "link" && tab.id === "app")),
+    [t, isSingleUseLinkSurvey, survey.type]
+  );
 
-  const tabs = [
-    { id: "link", label: `${isSingleUseLinkSurvey ? "Single Use Links" : "Share the Link"}`, icon: LinkIcon },
-    { id: "email", label: "Embed in an Email", icon: EnvelopeIcon },
-    { id: "webpage", label: "Embed in a Web Page", icon: CodeBracketIcon },
-  ];
+  const [activeId, setActiveId] = useState(survey.type === "link" ? tabs[0].id : tabs[3].id);
+  const [showView, setShowView] = useState<"start" | "embed" | "panel">("start");
+  const [surveyUrl, setSurveyUrl] = useState(webAppUrl + "/s/" + survey.id);
 
-  const [activeId, setActiveId] = useState(tabs[0].id);
+  useEffect(() => {
+    if (survey.type !== "link") {
+      setActiveId(tabs[3].id);
+    }
+  }, [survey.type, tabs]);
 
-  const componentMap = {
-    link: isSingleUseLinkSurvey ? (
-      <LinkSingleUseSurveyModal survey={survey} surveyBaseUrl={webAppUrl} />
-    ) : (
-      <LinkTab surveyUrl={surveyUrl} survey={survey} brandColor={surveyBrandColor} />
-    ),
-    email: <EmailTab survey={survey} surveyUrl={surveyUrl} email={email} brandColor={surveyBrandColor} />,
-    webpage: <WebpageTab surveyUrl={surveyUrl} />,
+  useEffect(() => {
+    if (open) {
+      setShowView(modalView);
+    } else {
+      setShowView("start");
+    }
+  }, [open, modalView]);
+
+  const handleOpenChange = (open: boolean) => {
+    setActiveId(survey.type === "link" ? tabs[0].id : tabs[3].id);
+    setOpen(open);
+    if (!open) {
+      setShowView("start");
+    }
+    router.refresh();
+  };
+
+  const handleInitialPageButton = () => {
+    setOpen(false);
   };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(open) => {
-        setActiveId(tabs[0].id);
-        setOpen(open);
-      }}>
-      <DialogContent className="bottom-0 flex h-[95%] w-full flex-col gap-0 overflow-hidden rounded-2xl bg-white p-0 sm:max-w-none lg:bottom-auto lg:h-auto lg:w-[960px]">
-        <div className="border-b border-gray-200 px-4 py-3 lg:px-6 lg:py-4 ">Share or embed your survey</div>
-        <div className="flex grow overflow-x-hidden overflow-y-scroll">
-          <div className="hidden basis-[326px] border-r border-gray-200 px-6 py-8 lg:block lg:shrink-0">
-            <div className="flex w-max flex-col gap-3">
-              {tabs.map((tab) => (
-                <Button
-                  StartIcon={tab.icon}
-                  startIconClassName={cn("h-4 w-4")}
-                  variant="minimal"
-                  key={tab.id}
-                  onClick={() => setActiveId(tab.id)}
-                  className={cn(
-                    "rounded-[4px] px-4 py-[6px] text-slate-600",
-                    // "focus:ring-0 focus:ring-offset-0", // enable these classes to remove the focus rings on buttons
-                    tab.id === activeId
-                      ? " border border-gray-200 bg-slate-100 font-semibold text-slate-900"
-                      : "border-transparent text-slate-500 hover:text-slate-700"
-                  )}
-                  aria-current={tab.id === activeId ? "page" : undefined}>
-                  {tab.label}
-                </Button>
-              ))}
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTitle className="sr-only" />
+      <DialogContent className="w-full max-w-xl bg-white p-0 md:max-w-3xl lg:h-[700px] lg:max-w-5xl">
+        {showView === "start" ? (
+          <div className="h-full max-w-full overflow-hidden">
+            <div className="flex h-[200px] w-full flex-col items-center justify-center space-y-6 p-8 text-center lg:h-2/5">
+              <DialogTitle>
+                <p className="pt-2 text-xl font-semibold text-slate-800">
+                  {t("environments.surveys.summary.your_survey_is_public")} 🎉
+                </p>
+              </DialogTitle>
+              <DialogDescription className="hidden" />
+              <ShareSurveyLink
+                survey={survey}
+                webAppUrl={webAppUrl}
+                surveyUrl={surveyUrl}
+                setSurveyUrl={setSurveyUrl}
+                locale={user.locale}
+              />
+            </div>
+            <div className="flex h-[300px] flex-col items-center justify-center gap-8 rounded-b-lg bg-slate-50 px-8 lg:h-3/5">
+              <p className="-mt-8 text-sm text-slate-500">{t("environments.surveys.summary.whats_next")}</p>
+              <div className="grid grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowView("embed")}
+                  className="flex flex-col items-center gap-3 rounded-lg border border-slate-100 bg-white p-4 text-sm text-slate-500 hover:border-slate-200 md:p-8">
+                  <Code2Icon className="h-6 w-6 text-slate-700" />
+                  {t("environments.surveys.summary.embed_survey")}
+                </button>
+                <Link
+                  href={`/environments/${environmentId}/settings/notifications`}
+                  className="flex flex-col items-center gap-3 rounded-lg border border-slate-100 bg-white p-4 text-sm text-slate-500 hover:border-slate-200 md:p-8">
+                  <BellRing className="h-6 w-6 text-slate-700" />
+                  {t("environments.surveys.summary.configure_alerts")}
+                </Link>
+                <Link
+                  href={`/environments/${environmentId}/integrations`}
+                  className="flex flex-col items-center gap-3 rounded-lg border border-slate-100 bg-white p-4 text-sm text-slate-500 hover:border-slate-200 md:p-8">
+                  <BlocksIcon className="h-6 w-6 text-slate-700" />
+                  {t("environments.surveys.summary.setup_integrations")}
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setShowView("panel")}
+                  className="relative flex flex-col items-center gap-3 rounded-lg border border-slate-100 bg-white p-4 text-sm text-slate-500 hover:border-slate-200 md:p-8">
+                  <UsersRound className="h-6 w-6 text-slate-700" />
+                  {t("environments.surveys.summary.send_to_panel")}
+                  <Badge
+                    size="tiny"
+                    type="success"
+                    className="absolute right-3 top-3"
+                    text={t("common.new")}
+                  />
+                </button>
+              </div>
             </div>
           </div>
-          <div className="flex w-full grow flex-col gap-6 bg-gray-50 px-4 py-6 lg:p-6">
-            <div className="flex h-full overflow-y-scroll lg:h-[590px] lg:overflow-y-visible">
-              {componentMap[activeId]}
-            </div>
-            <div className="mx-auto flex max-w-max rounded-md bg-slate-100 p-1 lg:hidden">
-              {tabs.slice(0, 2).map((tab) => (
-                <Button
-                  variant="minimal"
-                  key={tab.id}
-                  onClick={() => setActiveId(tab.id)}
-                  className={cn(
-                    "rounded-sm px-3 py-[6px]",
-                    tab.id === activeId
-                      ? "bg-white text-slate-900"
-                      : "border-transparent text-slate-700 hover:text-slate-900"
-                  )}>
-                  {tab.label}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </div>
+        ) : showView === "embed" ? (
+          <EmbedView
+            handleInitialPageButton={handleInitialPageButton}
+            tabs={survey.type === "link" ? tabs : [tabs[3]]}
+            disableBack={false}
+            activeId={activeId}
+            environmentId={environmentId}
+            setActiveId={setActiveId}
+            survey={survey}
+            email={email}
+            surveyUrl={surveyUrl}
+            setSurveyUrl={setSurveyUrl}
+            webAppUrl={webAppUrl}
+            locale={user.locale}
+          />
+        ) : showView === "panel" ? (
+          <PanelInfoView handleInitialPageButton={handleInitialPageButton} disableBack={false} />
+        ) : null}
       </DialogContent>
     </Dialog>
   );
-}
+};

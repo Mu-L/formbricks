@@ -1,5 +1,3 @@
-import LoadingSpinner from "@formbricks/ui/LoadingSpinner";
+import { SurveyListLoading } from "@/modules/survey/list/loading";
 
-export default function LoadingPage() {
-  return <LoadingSpinner />;
-}
+export default SurveyListLoading;

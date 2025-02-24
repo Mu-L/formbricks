@@ -1,27 +1,38 @@
 "use client";
 
-import {
-  TIntegrationAirtableTables,
-  TIntegrationAirtable,
-  TIntegrationAirtableConfigData,
-  TIntegrationAirtableInput,
-} from "@formbricks/types/integration/airtable";
-import { TSurvey } from "@formbricks/types/surveys";
-import { Alert, AlertDescription, AlertTitle } from "@formbricks/ui/Alert";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@formbricks/ui/Select";
-import { Button } from "@formbricks/ui/Button";
-import { Checkbox } from "@formbricks/ui/Checkbox";
-import { Label } from "@formbricks/ui/Label";
-import { Modal } from "@formbricks/ui/Modal";
-import AirtableLogo from "../images/airtable.svg";
+import { createOrUpdateIntegrationAction } from "@/app/(app)/environments/[environmentId]/integrations/actions";
+import { BaseSelectDropdown } from "@/app/(app)/environments/[environmentId]/integrations/airtable/components/BaseSelectDropdown";
 import { fetchTables } from "@/app/(app)/environments/[environmentId]/integrations/airtable/lib/airtable";
+import AirtableLogo from "@/images/airtableLogo.svg";
+import { AdditionalIntegrationSettings } from "@/modules/ui/components/additional-integration-settings";
+import { Alert, AlertDescription, AlertTitle } from "@/modules/ui/components/alert";
+import { Button } from "@/modules/ui/components/button";
+import { Checkbox } from "@/modules/ui/components/checkbox";
+import { Label } from "@/modules/ui/components/label";
+import { Modal } from "@/modules/ui/components/modal";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/modules/ui/components/select";
+import { useTranslate } from "@tolgee/react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Control, Controller, UseFormSetValue, useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "react-hot-toast";
-import { upsertIntegrationAction } from "../actions";
+import { getLocalizedValue } from "@formbricks/lib/i18n/utils";
+import { replaceHeadlineRecall } from "@formbricks/lib/utils/recall";
 import { TIntegrationItem } from "@formbricks/types/integration";
+import {
+  TIntegrationAirtable,
+  TIntegrationAirtableConfigData,
+  TIntegrationAirtableInput,
+  TIntegrationAirtableTables,
+} from "@formbricks/types/integration/airtable";
+import { TSurvey } from "@formbricks/types/surveys/types";
 
 type EditModeProps =
   | { isEditMode: false; defaultData?: never }
@@ -41,90 +52,58 @@ export type IntegrationModalInputs = {
   table: string;
   survey: string;
   questions: string[];
+  includeVariables: boolean;
+  includeHiddenFields: boolean;
+  includeMetadata: boolean;
+  includeCreatedAt: boolean;
 };
 
-function NoBaseFoundError() {
+const NoBaseFoundError = () => {
+  const { t } = useTranslate();
   return (
     <Alert>
-      <AlertTitle>No Airbase bases found</AlertTitle>
-      <AlertDescription>create a Airbase base</AlertDescription>
+      <AlertTitle>{t("environments.integrations.airtable.no_bases_found")}</AlertTitle>
+      <AlertDescription>{t("environments.integrations.airtable.please_create_a_base")}</AlertDescription>
     </Alert>
   );
-}
+};
 
-interface BaseSelectProps {
-  control: Control<IntegrationModalInputs, any>;
-  isLoading: boolean;
-  fetchTable: (val: string) => Promise<void>;
-  airtableArray: TIntegrationItem[];
-  setValue: UseFormSetValue<IntegrationModalInputs>;
-  defaultValue: string | undefined;
-}
-
-function BaseSelect({
+export const AddIntegrationModal = ({
+  open,
+  setOpenWithStates,
+  environmentId,
   airtableArray,
-  control,
-  fetchTable,
-  isLoading,
-  setValue,
-  defaultValue,
-}: BaseSelectProps) {
-  return (
-    <div className="flex w-full flex-col">
-      <Label htmlFor="base">Airtable base</Label>
-      <div className="mt-1 flex">
-        <Controller
-          control={control}
-          name="base"
-          render={({ field }) => (
-            <Select
-              required
-              disabled={isLoading}
-              onValueChange={async (val) => {
-                field.onChange(val);
-                await fetchTable(val);
-                setValue("table", "");
-              }}
-              defaultValue={defaultValue}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {airtableArray.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        />
-      </div>
-    </div>
-  );
-}
-
-export default function AddIntegrationModal(props: AddIntegrationModalProps) {
-  const {
-    open,
-    setOpenWithStates,
-    environmentId,
-    airtableArray,
-    surveys,
-    airtableIntegration,
-    isEditMode,
-    defaultData,
-  } = props;
+  surveys,
+  airtableIntegration,
+  isEditMode,
+  defaultData,
+}: AddIntegrationModalProps) => {
+  const { t } = useTranslate();
   const router = useRouter();
   const [tables, setTables] = useState<TIntegrationAirtableTables["tables"]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { handleSubmit, control, watch, setValue, reset } = useForm<IntegrationModalInputs>();
+  const [includeHiddenFields, setIncludeHiddenFields] = useState(false);
+  const [includeMetadata, setIncludeMetadata] = useState(false);
+  const [includeCreatedAt, setIncludeCreatedAt] = useState(true);
+  const airtableIntegrationData: TIntegrationAirtableInput = {
+    type: "airtable",
+    config: {
+      key: airtableIntegration?.config?.key,
+      data: airtableIntegration.config.data ?? [],
+      email: airtableIntegration?.config?.email,
+    },
+  };
 
   useEffect(() => {
     if (isEditMode) {
       const { index: _index, ...rest } = defaultData;
       reset(rest);
       fetchTable(defaultData.base);
+      setIncludeVariables(!!defaultData.includeVariables);
+      setIncludeHiddenFields(!!defaultData.includeHiddenFields);
+      setIncludeMetadata(!!defaultData.includeMetadata);
+      setIncludeCreatedAt(!!defaultData.includeCreatedAt);
     } else {
       reset();
     }
@@ -132,33 +111,30 @@ export default function AddIntegrationModal(props: AddIntegrationModalProps) {
   }, [isEditMode]);
 
   const survey = watch("survey");
+  const includeVariables = watch("includeVariables");
+
+  const setIncludeVariables = (includeVariables: boolean) => {
+    setValue("includeVariables", includeVariables);
+  };
+
   const selectedSurvey = surveys.find((item) => item.id === survey);
   const submitHandler = async (data: IntegrationModalInputs) => {
     try {
       if (!data.base || data.base === "") {
-        throw new Error("Please select a base");
+        throw new Error(t("environments.integrations.airtable.please_select_a_base"));
       }
 
       if (!data.table || data.table === "") {
-        throw new Error("Please select a table");
+        throw new Error(t("environments.integrations.airtable.please_select_a_table"));
       }
 
       if (!selectedSurvey) {
-        throw new Error("Please select a survey");
+        throw new Error(t("environments.integrations.please_select_a_survey_error"));
       }
 
       if (data.questions.length === 0) {
-        throw new Error("Please select at least one question");
+        throw new Error(t("environments.integrations.select_at_least_one_question_error"));
       }
-
-      const airtableIntegrationData: TIntegrationAirtableInput = {
-        type: "airtable",
-        config: {
-          key: airtableIntegration?.config?.key,
-          data: airtableIntegration.config.data ?? [],
-          email: airtableIntegration?.config?.email,
-        },
-      };
 
       const currentTable = tables.find((item) => item.id === data.table);
       const integrationData: TIntegrationAirtableConfigData = {
@@ -166,11 +142,17 @@ export default function AddIntegrationModal(props: AddIntegrationModalProps) {
         surveyName: selectedSurvey.name,
         questionIds: data.questions,
         questions:
-          data.questions.length === selectedSurvey.questions.length ? "All questions" : "Selected questions",
+          data.questions.length === selectedSurvey.questions.length
+            ? t("common.all_questions")
+            : t("common.selected_questions"),
         createdAt: new Date(),
         baseId: data.base,
         tableId: data.table,
         tableName: currentTable?.name ?? "",
+        includeVariables: data.includeVariables,
+        includeHiddenFields,
+        includeMetadata,
+        includeCreatedAt,
       };
 
       if (isEditMode) {
@@ -181,10 +163,12 @@ export default function AddIntegrationModal(props: AddIntegrationModalProps) {
         airtableIntegrationData.config?.data.push(integrationData);
       }
 
-      const actionMessage = isEditMode ? "updated" : "added";
-
-      await upsertIntegrationAction(environmentId, airtableIntegrationData);
-      toast.success(`Integration ${actionMessage} successfully`);
+      await createOrUpdateIntegrationAction({ environmentId, integrationData: airtableIntegrationData });
+      if (isEditMode) {
+        toast.success(t("environments.integrations.integration_updated_successfully"));
+      } else {
+        toast.success(t("environments.integrations.integration_added_successfully"));
+      }
       handleClose();
     } catch (e) {
       toast.error(e.message);
@@ -212,14 +196,14 @@ export default function AddIntegrationModal(props: AddIntegrationModalProps) {
 
   const handleDelete = async (index: number) => {
     try {
-      const integrationCopy = { ...airtableIntegration };
-      integrationCopy.config.data.splice(index, 1);
+      const integrationData = structuredClone(airtableIntegrationData);
+      integrationData.config.data.splice(index, 1);
 
-      await upsertIntegrationAction(environmentId, integrationCopy);
+      await createOrUpdateIntegrationAction({ environmentId, integrationData });
       handleClose();
       router.refresh();
 
-      toast.success(`Integration deleted successfully`);
+      toast.success(t("environments.integrations.integration_removed_successfully"));
     } catch (e) {
       toast.error(e.message);
     }
@@ -231,11 +215,15 @@ export default function AddIntegrationModal(props: AddIntegrationModalProps) {
         <div className="flex w-full items-center justify-between p-6">
           <div className="flex items-center space-x-2">
             <div className="mr-1.5 h-6 w-6 text-slate-500">
-              <Image className="w-12" src={AirtableLogo} alt="Airbase logo" />
+              <Image className="w-12" src={AirtableLogo} alt="Airtable logo" />
             </div>
             <div>
-              <div className="text-xl font-medium text-slate-700">Link Airbase Table</div>
-              <div className="text-sm text-slate-500">Sync responses with a Airbase table</div>
+              <div className="text-xl font-medium text-slate-700">
+                {t("environments.integrations.airtable.link_airtable_table")}
+              </div>
+              <div className="text-sm text-slate-500">
+                {t("environments.integrations.airtable.sync_responses_with_airtable")}
+              </div>
             </div>
           </div>
         </div>
@@ -244,7 +232,7 @@ export default function AddIntegrationModal(props: AddIntegrationModalProps) {
         <div className="flex rounded-lg p-6">
           <div className="flex w-full flex-col gap-y-4 pt-5">
             {airtableArray.length ? (
-              <BaseSelect
+              <BaseSelectDropdown
                 control={control}
                 isLoading={isLoading}
                 fetchTable={fetchTable}
@@ -257,7 +245,7 @@ export default function AddIntegrationModal(props: AddIntegrationModalProps) {
             )}
 
             <div className="flex w-full flex-col">
-              <Label htmlFor="table">Table</Label>
+              <Label htmlFor="table">{t("environments.integrations.airtable.table_name")}</Label>
               <div className="mt-1 flex">
                 <Controller
                   control={control}
@@ -290,7 +278,7 @@ export default function AddIntegrationModal(props: AddIntegrationModalProps) {
 
             {surveys.length ? (
               <div className="flex w-full flex-col">
-                <Label htmlFor="survey">Select Survey</Label>
+                <Label htmlFor="survey">{t("common.select_survey")}</Label>
                 <div className="mt-1 flex">
                   <Controller
                     control={control}
@@ -322,43 +310,57 @@ export default function AddIntegrationModal(props: AddIntegrationModalProps) {
 
             {!surveys.length ? (
               <p className="m-1 text-xs text-slate-500">
-                You have to create a survey to be able to setup this integration
+                {t("environments.integrations.create_survey_warning")}
               </p>
             ) : null}
 
             {survey && selectedSurvey && (
-              <div>
-                <Label htmlFor="Surveys">Questions</Label>
-                <div className="mt-1 rounded-lg border border-slate-200">
-                  <div className="grid content-center rounded-lg bg-slate-50 p-3 text-left text-sm text-slate-900">
-                    {selectedSurvey?.questions.map((question) => (
-                      <Controller
-                        key={question.id}
-                        control={control}
-                        name={"questions"}
-                        render={({ field }) => (
-                          <div className="my-1 flex items-center space-x-2">
-                            <label htmlFor={question.id} className="flex cursor-pointer items-center">
-                              <Checkbox
-                                type="button"
-                                id={question.id}
-                                value={question.id}
-                                className="bg-white"
-                                checked={field.value?.includes(question.id)}
-                                onCheckedChange={(checked) => {
-                                  return checked
-                                    ? field.onChange([...field.value, question.id])
-                                    : field.onChange(field.value?.filter((value) => value !== question.id));
-                                }}
-                              />
-                              <span className="ml-2">{question.headline}</span>
-                            </label>
-                          </div>
-                        )}
-                      />
-                    ))}
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="Surveys">{t("common.questions")}</Label>
+                  <div className="mt-1 max-h-[15vh] overflow-y-auto rounded-lg border border-slate-200">
+                    <div className="grid content-center rounded-lg bg-slate-50 p-3 text-left text-sm text-slate-900">
+                      {replaceHeadlineRecall(selectedSurvey, "default")?.questions.map((question) => (
+                        <Controller
+                          key={question.id}
+                          control={control}
+                          name={"questions"}
+                          render={({ field }) => (
+                            <div className="my-1 flex items-center space-x-2">
+                              <label htmlFor={question.id} className="flex cursor-pointer items-center">
+                                <Checkbox
+                                  type="button"
+                                  id={question.id}
+                                  value={question.id}
+                                  className="bg-white"
+                                  checked={field.value?.includes(question.id)}
+                                  onCheckedChange={(checked) => {
+                                    return checked
+                                      ? field.onChange([...field.value, question.id])
+                                      : field.onChange(field.value?.filter((value) => value !== question.id));
+                                  }}
+                                />
+                                <span className="ml-2">
+                                  {getLocalizedValue(question.headline, "default")}
+                                </span>
+                              </label>
+                            </div>
+                          )}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
+                <AdditionalIntegrationSettings
+                  includeVariables={includeVariables}
+                  setIncludeVariables={setIncludeVariables}
+                  includeHiddenFields={includeHiddenFields}
+                  includeMetadata={includeMetadata}
+                  setIncludeHiddenFields={setIncludeHiddenFields}
+                  setIncludeMetadata={setIncludeMetadata}
+                  includeCreatedAt={includeCreatedAt}
+                  setIncludeCreatedAt={setIncludeCreatedAt}
+                />
               </div>
             )}
 
@@ -370,22 +372,20 @@ export default function AddIntegrationModal(props: AddIntegrationModalProps) {
                   }}
                   type="button"
                   loading={isLoading}
-                  variant="warn">
-                  Delete
+                  variant="destructive">
+                  {t("common.delete")}
                 </Button>
               ) : (
-                <Button type="button" loading={isLoading} variant="minimal" onClick={handleClose}>
-                  Cancel
+                <Button type="button" loading={isLoading} variant="ghost" onClick={handleClose}>
+                  {t("common.cancel")}
                 </Button>
               )}
 
-              <Button variant="darkCTA" type="submit">
-                Save
-              </Button>
+              <Button type="submit">{t("common.save")}</Button>
             </div>
           </div>
         </div>
       </form>
     </Modal>
   );
-}
+};
