@@ -1,19 +1,26 @@
-import z from "zod";
-
-export const ZPersonAttributes = z.record(z.union([z.string(), z.number()]));
-export type TPersonAttributes = z.infer<typeof ZPersonAttributes>;
+import { z } from "zod";
+import { ZAttributes } from "./attributes";
 
 export const ZPerson = z.object({
   id: z.string().cuid2(),
-  attributes: ZPersonAttributes,
   createdAt: z.date(),
   updatedAt: z.date(),
   environmentId: z.string().cuid2(),
 });
 
-export const ZPersonUpdateInput = z.object({
-  attributes: ZPersonAttributes,
+export const ZPersonTableData = z.object({
+  personId: z.string(),
+  createdAt: z.date(),
+  userId: z.string(),
+  attributes: ZAttributes,
 });
 
-export type TPersonUpdateInput = z.infer<typeof ZPersonUpdateInput>;
+export const ZPersonWithAttributes = ZPerson.extend({
+  attributes: ZAttributes,
+});
+
+export type TPersonWithAttributes = z.infer<typeof ZPersonWithAttributes>;
+
+export type TPersonTableData = z.infer<typeof ZPersonTableData>;
+
 export type TPerson = z.infer<typeof ZPerson>;

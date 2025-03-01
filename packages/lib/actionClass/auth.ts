@@ -1,31 +1,34 @@
 import "server-only";
-
-import { ZId } from "@formbricks/types/environment";
-import { validateInputs } from "../utils/validate";
+import { ZId } from "@formbricks/types/common";
+import { cache } from "../cache";
 import { hasUserEnvironmentAccess } from "../environment/auth";
-import { getActionClass } from "./service";
-import { unstable_cache } from "next/cache";
-import { SERVICES_REVALIDATION_INTERVAL } from "../constants";
+import { validateInputs } from "../utils/validate";
 import { actionClassCache } from "./cache";
+import { getActionClass } from "./service";
 
-export const canUserAccessActionClass = async (userId: string, actionClassId: string): Promise<boolean> =>
-  await unstable_cache(
+export const canUserUpdateActionClass = (userId: string, actionClassId: string): Promise<boolean> =>
+  cache(
     async () => {
       validateInputs([userId, ZId], [actionClassId, ZId]);
-      if (!userId) return false;
 
-      const actionClass = await getActionClass(actionClassId);
-      if (!actionClass) return false;
+      try {
+        if (!userId) return false;
 
-      const hasAccessToEnvironment = await hasUserEnvironmentAccess(userId, actionClass.environmentId);
-      if (!hasAccessToEnvironment) return false;
+        const actionClass = await getActionClass(actionClassId);
+        if (!actionClass) return false;
 
-      return true;
+        const hasAccessToEnvironment = await hasUserEnvironmentAccess(userId, actionClass.environmentId);
+
+        if (!hasAccessToEnvironment) return false;
+
+        return true;
+      } catch (error) {
+        throw error;
+      }
     },
 
-    [`users-${userId}-actionClasses-${actionClassId}`],
+    [`canUserUpdateActionClass-${userId}-${actionClassId}`],
     {
-      revalidate: SERVICES_REVALIDATION_INTERVAL,
       tags: [actionClassCache.tag.byId(actionClassId)],
     }
   )();

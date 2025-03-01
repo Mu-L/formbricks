@@ -1,52 +1,19 @@
-import { prisma } from "@formbricks/database";
+import { Prisma } from "@prisma/client";
 import { DatabaseError } from "@formbricks/types/errors";
 import { TIntegrationItem } from "@formbricks/types/integration";
 import {
   TIntegrationAirtable,
   TIntegrationAirtableConfigData,
   TIntegrationAirtableCredential,
-  TIntegrationAirtableInput,
   ZIntegrationAirtableBases,
   ZIntegrationAirtableCredential,
   ZIntegrationAirtableTables,
   ZIntegrationAirtableTablesWithFields,
   ZIntegrationAirtableTokenSchema,
 } from "@formbricks/types/integration/airtable";
-import { Prisma } from "@prisma/client";
-import { AIR_TABLE_CLIENT_ID } from "../constants";
+import { AIRTABLE_CLIENT_ID, AIRTABLE_MESSAGE_LIMIT } from "../constants";
 import { createOrUpdateIntegration, deleteIntegration, getIntegrationByType } from "../integration/service";
-
-interface ConnectAirtableOptions {
-  environmentId: string;
-  key: TIntegrationAirtableCredential;
-  email: string;
-}
-
-export const connectAirtable = async ({ email, environmentId, key }: ConnectAirtableOptions) => {
-  const type: TIntegrationAirtableInput["type"] = "airtable";
-
-  const baseData: TIntegrationAirtableInput = {
-    type,
-    config: { data: [], key, email },
-  };
-
-  await prisma.integration.upsert({
-    where: {
-      type_environmentId: {
-        environmentId,
-        type,
-      },
-    },
-    update: {
-      ...baseData,
-      environment: { connect: { id: environmentId } },
-    },
-    create: {
-      ...baseData,
-      environment: { connect: { id: environmentId } },
-    },
-  });
-};
+import { truncateText } from "../utils/strings";
 
 export const getBases = async (key: string) => {
   const req = await fetch("https://api.airtable.com/v0/meta/bases", {
@@ -122,7 +89,7 @@ export const getAirtableToken = async (environmentId: string) => {
     const currentDate = new Date();
 
     if (currentDate >= expiryDate) {
-      const client_id = AIR_TABLE_CLIENT_ID;
+      const client_id = AIRTABLE_CLIENT_ID;
 
       const newToken = await fetchAirtableAuthToken({
         grant_type: "refresh_token",
@@ -187,8 +154,9 @@ const addRecords = async (
       typecast: true,
     }),
   });
+  const res = await req.json();
 
-  return await req.json();
+  return res;
 };
 
 const addField = async (
@@ -214,45 +182,45 @@ export const writeData = async (
   configData: TIntegrationAirtableConfigData,
   values: string[][]
 ) => {
-  try {
-    const responses = values[0];
-    const questions = values[1];
+  const responses = values[0];
+  const questions = values[1];
 
-    const data: Record<string, string> = {};
-    for (let i = 0; i < questions.length; i++) {
-      data[questions[i]] = responses[i];
-    }
-
-    const req = await tableFetcher(key, configData.baseId);
-    const tables = ZIntegrationAirtableTablesWithFields.parse(req).tables;
-
-    const currentTable = tables.find((table) => table.id === configData.tableId);
-    if (currentTable) {
-      const currentFields = new Set(currentTable.fields.map((field) => field.name));
-      const fieldsToCreate = new Set<string>();
-      for (const field of questions) {
-        const hasField = currentFields.has(field);
-        if (!hasField) {
-          fieldsToCreate.add(field);
-        }
-      }
-
-      if (fieldsToCreate.size > 0) {
-        const createFieldPromise: Promise<any>[] = [];
-        fieldsToCreate.forEach((fieldName) => {
-          createFieldPromise.push(
-            addField(key, configData.baseId, configData.tableId, {
-              name: fieldName,
-              type: "singleLineText",
-            })
-          );
-        });
-
-        await Promise.all(createFieldPromise);
-      }
-    }
-    await addRecords(key, configData.baseId, configData.tableId, data);
-  } catch (error: any) {
-    console.error(error?.message);
+  const data: Record<string, string> = {};
+  for (let i = 0; i < questions.length; i++) {
+    data[questions[i]] =
+      responses[i].length > AIRTABLE_MESSAGE_LIMIT
+        ? truncateText(responses[i], AIRTABLE_MESSAGE_LIMIT)
+        : responses[i];
   }
+
+  const req = await tableFetcher(key, configData.baseId);
+  const tables = ZIntegrationAirtableTablesWithFields.parse(req).tables;
+
+  const currentTable = tables.find((table) => table.id === configData.tableId);
+  if (currentTable) {
+    const currentFields = new Set(currentTable.fields.map((field) => field.name));
+    const fieldsToCreate = new Set<string>();
+    for (const field of questions) {
+      const hasField = currentFields.has(field);
+      if (!hasField) {
+        fieldsToCreate.add(field);
+      }
+    }
+
+    if (fieldsToCreate.size > 0) {
+      const createFieldPromise: Promise<any>[] = [];
+      fieldsToCreate.forEach((fieldName) => {
+        createFieldPromise.push(
+          addField(key, configData.baseId, configData.tableId, {
+            name: fieldName,
+            type: "singleLineText",
+          })
+        );
+      });
+
+      await Promise.all(createFieldPromise);
+    }
+  }
+
+  await addRecords(key, configData.baseId, configData.tableId, data);
 };

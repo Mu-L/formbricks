@@ -1,7 +1,11 @@
-import { getUploadSignedUrl } from "@formbricks/lib/storage/service";
 import { responses } from "@/app/lib/api/response";
+import { getUploadSignedUrl } from "@formbricks/lib/storage/service";
 
-const getSignedUrlForPublicFile = async (fileName: string, environmentId: string, fileType: string) => {
+export const getSignedUrlForPublicFile = async (
+  fileName: string,
+  environmentId: string,
+  fileType: string
+) => {
   const accessType = "public"; // public files are accessible by anyone
 
   // if s3 is not configured, we'll upload to a local folder named uploads
@@ -16,5 +20,3 @@ const getSignedUrlForPublicFile = async (fileName: string, environmentId: string
     return responses.internalServerErrorResponse("Internal server error");
   }
 };
-
-export default getSignedUrlForPublicFile;

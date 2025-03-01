@@ -15,10 +15,10 @@ Formbricks is your go-to solution for in-product micro-surveys that will superch
 1. Install the Formbricks package inside your project using npm:
 
 ```bash
-npm install -s @formbricks/js
+npm install @formbricks/js
 ```
 
-2. Import Formbricks and initialize the widget in your main component (e.g., App.tsx or App.js):
+1. Import Formbricks and initialize the widget in your main component (e.g., App.tsx or App.js):
 
 ```javascript
 import formbricks from "@formbricks/js";
@@ -31,6 +31,6 @@ if (typeof window !== "undefined") {
 }
 ```
 
-Replace your-environment-id with your actual environment ID. You can find your environment ID in the **Setup Checklist** in the Formbricks settings.
+Replace your-environment-id with your actual environment ID. You can find your environment ID in the **Setup Checklist** in the Formbricks settings. If you want to use the user identification feature, please check out [our docs for details](https://formbricks.com/docs/app-surveys/user-identification).
 
 For more detailed guides for different frameworks, check out our [Framework Guides](https://formbricks.com/docs/getting-started/framework-guides).
