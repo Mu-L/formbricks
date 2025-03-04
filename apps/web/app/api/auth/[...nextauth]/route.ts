@@ -1,5 +1,7 @@
+import { authOptions } from "@/modules/auth/lib/authOptions";
 import NextAuth from "next-auth";
-import { authOptions } from "./authOptions";
+
+export const fetchCache = "force-no-store";
 
 const handler = NextAuth(authOptions);
 

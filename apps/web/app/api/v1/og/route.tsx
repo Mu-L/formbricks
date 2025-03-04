@@ -1,13 +1,7 @@
 import { ImageResponse } from "@vercel/og";
 import { NextRequest } from "next/server";
-/* import { NextRequest } from "next/server";
-import { ImageResponse } from "next/og"; */
-// App router includes @vercel/og.
-// No need to install it.
 
-export const runtime = "edge";
-
-export async function GET(req: NextRequest) {
+export const GET = async (req: NextRequest) => {
   let name = req.nextUrl.searchParams.get("name");
   let brandColor = req.nextUrl.searchParams.get("brandColor");
 
@@ -32,10 +26,10 @@ export async function GET(req: NextRequest) {
           <div tw="flex flex-col w-full">
             <div tw="flex flex-col md:flex-row w-full md:items-center justify-between ">
               <div tw="flex flex-col  px-8">
-                <h2 tw="flex flex-col text-[8] sm:text-4xl font-bold tracking-tight text-gray-900 text-left mt-15">
+                <h2 tw="flex flex-col text-[8] sm:text-4xl font-bold tracking-tight text-slate-900 text-left mt-15">
                   {name}
                 </h2>
-                <span tw="text-gray-600 text-xl">Complete in ~ 4 minutes</span>
+                <span tw="text-slate-600 text-xl">Complete in ~ 4 minutes</span>
               </div>
             </div>
             <div tw="flex justify-end mr-10 ">
@@ -56,6 +50,9 @@ export async function GET(req: NextRequest) {
     {
       width: 800,
       height: 400,
+      headers: {
+        "Cache-Control": "public, s-maxage=600, max-age=1800, stale-while-revalidate=600, stale-if-error=600",
+      },
     }
   );
-}
+};
