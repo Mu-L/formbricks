@@ -3,7 +3,8 @@ import { revalidateTag } from "next/cache";
 interface RevalidateProps {
   id?: string;
   surveyId?: string;
-  personId?: string | null;
+  contactId?: string | null;
+  userId?: string;
   environmentId?: string;
 }
 
@@ -15,14 +16,21 @@ export const displayCache = {
     bySurveyId(surveyId: string) {
       return `surveys-${surveyId}-displays`;
     },
-    byPersonId(personId: string) {
-      return `people-${personId}-displays`;
+    byContactId(contactId: string) {
+      return `contacts-${contactId}-displays`;
+    },
+    byEnvironmentIdAndUserId(environmentId: string, userId: string) {
+      return `environments-${environmentId}-users-${userId}-displays`;
     },
     byEnvironmentId(environmentId: string) {
       return `environments-${environmentId}-displays`;
     },
   },
-  revalidate({ id, surveyId, personId, environmentId }: RevalidateProps): void {
+  revalidate({ id, surveyId, contactId, environmentId, userId }: RevalidateProps): void {
+    if (environmentId && userId) {
+      revalidateTag(this.tag.byEnvironmentIdAndUserId(environmentId, userId));
+    }
+
     if (id) {
       revalidateTag(this.tag.byId(id));
     }
@@ -31,8 +39,8 @@ export const displayCache = {
       revalidateTag(this.tag.bySurveyId(surveyId));
     }
 
-    if (personId) {
-      revalidateTag(this.tag.byPersonId(personId));
+    if (contactId) {
+      revalidateTag(this.tag.byContactId(contactId));
     }
 
     if (environmentId) {

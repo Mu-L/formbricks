@@ -1,102 +1,118 @@
 "use client";
 
-import { updateSurveyAction } from "@/app/(app)/environments/[environmentId]/surveys/[surveyId]/edit/actions";
-import { SurveyStatusIndicator } from "@formbricks/ui/SurveyStatusIndicator";
-import { TEnvironment } from "@formbricks/types/environment";
-import { TSurvey } from "@formbricks/types/surveys";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@formbricks/ui/Select";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@formbricks/ui/Tooltip";
-import { CheckCircleIcon, PauseCircleIcon, PlayCircleIcon } from "@heroicons/react/24/solid";
+import { getFormattedErrorMessage } from "@/lib/utils/helper";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/modules/ui/components/select";
+import { SurveyStatusIndicator } from "@/modules/ui/components/survey-status-indicator";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/modules/ui/components/tooltip";
+import { useTranslate } from "@tolgee/react";
 import toast from "react-hot-toast";
+import { TEnvironment } from "@formbricks/types/environment";
+import { TSurvey } from "@formbricks/types/surveys/types";
+import { updateSurveyAction } from "../actions";
 
-export default function SurveyStatusDropdown({
+interface SurveyStatusDropdownProps {
+  environment: TEnvironment;
+  updateLocalSurveyStatus?: (status: TSurvey["status"]) => void;
+  survey: TSurvey;
+}
+
+export const SurveyStatusDropdown = ({
   environment,
   updateLocalSurveyStatus,
   survey,
-}: {
-  environment: TEnvironment;
-  updateLocalSurveyStatus?: (status: "draft" | "inProgress" | "paused" | "completed" | "archived") => void;
-  survey: TSurvey;
-}) {
+}: SurveyStatusDropdownProps) => {
+  const { t } = useTranslate();
   const isCloseOnDateEnabled = survey.closeOnDate !== null;
   const closeOnDate = survey.closeOnDate ? new Date(survey.closeOnDate) : null;
-  const isStatusChangeDisabled = (isCloseOnDateEnabled && closeOnDate && closeOnDate < new Date()) ?? false;
+  const isStatusChangeDisabled =
+    (survey.status === "scheduled" || (isCloseOnDateEnabled && closeOnDate && closeOnDate < new Date())) ??
+    false;
+
+  const handleStatusChange = async (status: TSurvey["status"]) => {
+    const updateSurveyActionResponse = await updateSurveyAction({ ...survey, status });
+
+    if (updateSurveyActionResponse?.data) {
+      toast.success(
+        status === "inProgress"
+          ? t("common.survey_live")
+          : status === "paused"
+            ? t("common.survey_paused")
+            : status === "completed"
+              ? t("common.survey_completed")
+              : ""
+      );
+    } else {
+      const errorMessage = getFormattedErrorMessage(updateSurveyActionResponse);
+      toast.error(errorMessage);
+    }
+
+    if (updateLocalSurveyStatus) updateLocalSurveyStatus(status);
+  };
 
   return (
     <>
       {survey.status === "draft" ? (
         <div className="flex items-center">
-          {(survey.type === "link" || environment.widgetSetupCompleted) && (
-            <SurveyStatusIndicator status={survey.status} />
-          )}
-          {survey.status === "draft" && <p className="text-sm italic text-slate-600">Draft</p>}
+          <p className="text-sm italic text-slate-600">{t("common.draft")}</p>
         </div>
       ) : (
         <Select
           value={survey.status}
           disabled={isStatusChangeDisabled}
-          onValueChange={(value) => {
-            const castedValue = value as "draft" | "inProgress" | "paused" | "completed";
-            updateSurveyAction({ ...survey, status: castedValue })
-              .then(() => {
-                toast.success(
-                  value === "inProgress"
-                    ? "Survey live"
-                    : value === "paused"
-                    ? "Survey paused"
-                    : value === "completed"
-                    ? "Survey completed"
-                    : ""
-                );
-              })
-              .catch((error) => {
-                toast.error(`Error: ${error.message}`);
-              });
-
-            if (updateLocalSurveyStatus)
-              updateLocalSurveyStatus(value as "draft" | "inProgress" | "paused" | "completed" | "archived");
+          onValueChange={(value: TSurvey["status"]) => {
+            handleStatusChange(value);
           }}>
           <TooltipProvider delayDuration={50}>
             <Tooltip open={isStatusChangeDisabled ? undefined : false}>
               <TooltipTrigger asChild>
-                <SelectTrigger className="w-[170px] bg-white py-6 md:w-[200px]">
+                <SelectTrigger className="w-[170px] bg-white md:w-[200px]">
                   <SelectValue>
                     <div className="flex items-center">
-                      {(survey.type === "link" || environment.widgetSetupCompleted) && (
+                      {(survey.type === "link" || environment.appSetupCompleted) && (
                         <SurveyStatusIndicator status={survey.status} />
                       )}
                       <span className="ml-2 text-sm text-slate-700">
-                        {survey.status === "inProgress" && "In-progress"}
-                        {survey.status === "paused" && "Paused"}
-                        {survey.status === "completed" && "Completed"}
+                        {survey.status === "scheduled" && t("common.scheduled")}
+                        {survey.status === "inProgress" && t("common.in_progress")}
+                        {survey.status === "paused" && t("common.paused")}
+                        {survey.status === "completed" && t("common.completed")}
                       </span>
                     </div>
                   </SelectValue>
                 </SelectTrigger>
               </TooltipTrigger>
               <SelectContent className="bg-white">
-                <SelectItem className="group  font-normal hover:text-slate-900" value="inProgress">
-                  <PlayCircleIcon className="-mt-1 mr-1 inline h-5 w-5 text-slate-500 group-hover:text-slate-800" />
-                  In-progress
+                <SelectItem className="group font-normal hover:text-slate-900" value="inProgress">
+                  <div className="flex w-full items-center justify-center gap-4">
+                    <SurveyStatusIndicator status={"inProgress"} />
+                    {t("common.in_progress")}
+                  </div>
                 </SelectItem>
-                <SelectItem className="group  font-normal hover:text-slate-900" value="paused">
-                  <PauseCircleIcon className="-mt-1 mr-1 inline h-5 w-5 text-slate-500 group-hover:text-slate-800" />
-                  Paused
+                <SelectItem className="group font-normal hover:text-slate-900" value="paused">
+                  <div className="flex w-full items-center justify-center gap-2">
+                    <SurveyStatusIndicator status={"paused"} />
+                    {t("common.paused")}
+                  </div>
                 </SelectItem>
-                <SelectItem className="group  font-normal hover:text-slate-900" value="completed">
-                  <CheckCircleIcon className="-mt-1 mr-1 inline h-5 w-5 text-slate-500 group-hover:text-slate-800" />
-                  Completed
+                <SelectItem className="group font-normal hover:text-slate-900" value="completed">
+                  <div className="flex w-full items-center justify-center gap-2">
+                    <SurveyStatusIndicator status={"completed"} />
+                    {t("common.completed")}
+                  </div>
                 </SelectItem>
               </SelectContent>
 
-              <TooltipContent>
-                To update the survey status, update the &ldquo;Close
-                <br /> survey on date&rdquo; setting in the Response Options.
-              </TooltipContent>
+              <TooltipContent>{t("environments.surveys.survey_status_tooltip")}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </Select>
       )}
     </>
   );
-}
+};

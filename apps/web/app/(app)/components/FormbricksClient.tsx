@@ -1,40 +1,32 @@
 "use client";
 
-import { env } from "@/env.mjs";
 import { formbricksEnabled } from "@/app/lib/formbricks";
-import formbricks from "@formbricks/js";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
+import formbricks from "@formbricks/js";
+import { env } from "@formbricks/lib/env";
 
-type UsageAttributesUpdaterProps = {
-  numSurveys: number;
-};
+export const FormbricksClient = ({ userId, email }: { userId: string; email: string }) => {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
-export default function FormbricksClient({ session }) {
   useEffect(() => {
-    if (formbricksEnabled && session?.user && formbricks) {
+    if (formbricksEnabled && userId) {
       formbricks.init({
         environmentId: env.NEXT_PUBLIC_FORMBRICKS_ENVIRONMENT_ID || "",
         apiHost: env.NEXT_PUBLIC_FORMBRICKS_API_HOST || "",
+        userId,
       });
-      formbricks.setUserId(session.user.id);
-      formbricks.setEmail(session.user.email);
+
+      formbricks.setEmail(email);
     }
-  }, [session]);
-  return null;
-}
+  }, [userId, email]);
 
-const updateUsageAttributes = (numSurveys) => {
-  if (!formbricksEnabled) return;
-
-  if (numSurveys >= 3) {
-    formbricks.setAttribute("HasThreeSurveys", "true");
-  }
-};
-
-export function UsageAttributesUpdater({ numSurveys }: UsageAttributesUpdaterProps) {
   useEffect(() => {
-    updateUsageAttributes(numSurveys);
-  }, [numSurveys]);
+    if (formbricksEnabled) {
+      formbricks.registerRouteChange();
+    }
+  }, [pathname, searchParams]);
 
   return null;
-}
+};

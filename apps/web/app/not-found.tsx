@@ -1,6 +1,7 @@
-import { Button } from "@formbricks/ui/Button";
+import { Button } from "@/modules/ui/components/button";
 import Link from "next/link";
-export default function NotFound() {
+
+const NotFound = () => {
   return (
     <>
       <div className="mx-auto flex h-full max-w-xl flex-col items-center justify-center py-16 text-center">
@@ -15,4 +16,6 @@ export default function NotFound() {
       </div>
     </>
   );
-}
+};
+
+export default NotFound;

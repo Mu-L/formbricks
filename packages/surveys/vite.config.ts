@@ -1,22 +1,39 @@
-import { resolve } from "path";
-import { defineConfig } from "vite";
 import preact from "@preact/preset-vite";
+import { resolve } from "path";
+import { defineConfig, loadEnv } from "vite";
 import dts from "vite-plugin-dts";
+import tsconfigPaths from "vite-tsconfig-paths";
+import { copyCompiledAssetsPlugin } from "../vite-plugins/copy-compiled-assets";
 
-// https://vitejs.dev/config/
-export default defineConfig({
-  build: {
-    emptyOutDir: false, // keep the dist folder to avoid errors with pnpm go when folder is empty during build
-    minify: "terser",
-    sourcemap: true,
-    lib: {
-      // Could also be a dictionary or array of multiple entry points
-      entry: resolve(__dirname, "src/index.ts"),
-      name: "formbricks-surveys",
-      formats: ["cjs", "es", "umd"],
-      // the proper extensions will be added
-      fileName: "index",
+const config = ({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+
+  return defineConfig({
+    define: {
+      "process.env": env,
     },
-  },
-  plugins: [preact(), dts({ rollupTypes: true })],
-});
+    build: {
+      emptyOutDir: false,
+      minify: "terser",
+      rollupOptions: {
+        output: {
+          inlineDynamicImports: true,
+        },
+      },
+      lib: {
+        entry: resolve(__dirname, "src/index.ts"),
+        name: "formbricksSurveys",
+        formats: ["es", "umd"],
+        fileName: "index",
+      },
+    },
+    plugins: [
+      preact(),
+      dts({ rollupTypes: true }),
+      tsconfigPaths(),
+      copyCompiledAssetsPlugin({ filename: "surveys", distDir: resolve(__dirname, "dist") }),
+    ],
+  });
+};
+
+export default config;

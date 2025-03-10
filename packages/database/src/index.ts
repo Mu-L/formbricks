@@ -1,2 +1,3 @@
-import "../jsonTypes";
+import "../json-types";
+
 export * from "./client";
