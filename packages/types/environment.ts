@@ -5,8 +5,8 @@ export const ZEnvironment = z.object({
   createdAt: z.date(),
   updatedAt: z.date(),
   type: z.enum(["development", "production"]),
-  productId: z.string(),
-  widgetSetupCompleted: z.boolean(),
+  projectId: z.string(),
+  appSetupCompleted: z.boolean(),
 });
 
 export type TEnvironment = z.infer<typeof ZEnvironment>;
@@ -19,15 +19,13 @@ export type TEnvironmentId = z.infer<typeof ZEnvironmentId>;
 
 export const ZEnvironmentUpdateInput = z.object({
   type: z.enum(["development", "production"]),
-  productId: z.string(),
-  widgetSetupCompleted: z.boolean(),
+  projectId: z.string(),
+  appSetupCompleted: z.boolean(),
 });
-
-export const ZId = z.string().cuid2();
 
 export const ZEnvironmentCreateInput = z.object({
   type: z.enum(["development", "production"]).optional(),
-  widgetSetupCompleted: z.boolean().optional(),
+  appSetupCompleted: z.boolean().optional(),
 });
 
 export type TEnvironmentCreateInput = z.infer<typeof ZEnvironmentCreateInput>;

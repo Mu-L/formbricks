@@ -1,26 +1,28 @@
-import { getApiKeyFromKey } from "@formbricks/lib/apiKey/service";
+import { getEnvironmentIdFromApiKey } from "@/app/api/v1/lib/api-key";
+import { responses } from "@/app/lib/api/response";
+import { hashApiKey } from "@/modules/api/v2/management/lib/utils";
 import { TAuthenticationApiKey } from "@formbricks/types/auth";
 import { DatabaseError, InvalidInputError, ResourceNotFoundError } from "@formbricks/types/errors";
-import { responses } from "@/app/lib/api/response";
-import { NextResponse } from "next/server";
 
-export async function authenticateRequest(request: Request): Promise<TAuthenticationApiKey | null> {
+export const authenticateRequest = async (request: Request): Promise<TAuthenticationApiKey | null> => {
   const apiKey = request.headers.get("x-api-key");
   if (apiKey) {
-    const apiKeyData = await getApiKeyFromKey(apiKey);
-    if (apiKeyData) {
+    const environmentId = await getEnvironmentIdFromApiKey(apiKey);
+    if (environmentId) {
+      const hashedApiKey = hashApiKey(apiKey);
       const authentication: TAuthenticationApiKey = {
         type: "apiKey",
-        environmentId: apiKeyData.environmentId,
+        environmentId,
+        hashedApiKey,
       };
       return authentication;
     }
     return null;
   }
   return null;
-}
+};
 
-export function handleErrorResponse(error: any): NextResponse {
+export const handleErrorResponse = (error: any): Response => {
   switch (error.message) {
     case "NotAuthenticated":
       return responses.notAuthenticatedResponse();
@@ -36,4 +38,4 @@ export function handleErrorResponse(error: any): NextResponse {
       }
       return responses.internalServerErrorResponse("Some error occurred");
   }
-}
+};

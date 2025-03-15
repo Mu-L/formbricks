@@ -1,107 +1,65 @@
-import { getLatestActionByEnvironmentId } from "@formbricks/lib/action/service";
-import { getEnvironment, updateEnvironment } from "@formbricks/lib/environment/service";
-import { timeSince } from "@formbricks/lib/time";
-import { ArrowDownIcon, CheckIcon, ExclamationTriangleIcon } from "@heroicons/react/24/solid";
-import clsx from "clsx";
-import Link from "next/link";
+"use client";
+
+import { Button } from "@/modules/ui/components/button";
+import { useTranslate } from "@tolgee/react";
+import { AlertTriangleIcon, CheckIcon, RotateCcwIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { cn } from "@formbricks/lib/cn";
+import { TEnvironment } from "@formbricks/types/environment";
 
 interface WidgetStatusIndicatorProps {
-  environmentId: string;
-  type: "large" | "mini";
+  environment: TEnvironment;
 }
 
-export default async function WidgetStatusIndicator({ environmentId, type }: WidgetStatusIndicatorProps) {
-  const [environment, latestAction] = await Promise.all([
-    getEnvironment(environmentId),
-    getLatestActionByEnvironmentId(environmentId),
-  ]);
-
-  if (!environment?.widgetSetupCompleted && latestAction) {
-    await updateEnvironment(environment.id, { widgetSetupCompleted: true });
-  }
-
+export const WidgetStatusIndicator = ({ environment }: WidgetStatusIndicatorProps) => {
+  const { t } = useTranslate();
+  const router = useRouter();
   const stati = {
     notImplemented: {
-      icon: ArrowDownIcon,
-      color: "slate",
-      title: "Connect Formbricks to your app.",
-      subtitle: "You have not yet connected Formbricks to your app. Follow setup guide.",
+      icon: AlertTriangleIcon,
+      title: t("environments.project.app-connection.formbricks_sdk_not_connected"),
+      subtitle: t("environments.project.app-connection.formbricks_sdk_not_connected_description"),
     },
-    running: { icon: CheckIcon, color: "green", title: "Receiving data.", subtitle: "Last action received:" },
-    issue: {
-      icon: ExclamationTriangleIcon,
-      color: "amber",
-      title: "There might be an issue.",
-      subtitle: "Last action received:",
+    running: {
+      icon: CheckIcon,
+      title: t("environments.project.app-connection.receiving_data"),
+      subtitle: t("environments.project.app-connection.formbricks_sdk_connected"),
     },
   };
 
-  let status: "notImplemented" | "running" | "issue";
+  let status: "notImplemented" | "running";
 
-  if (latestAction) {
-    const currentTime = new Date();
-    const timeDifference = currentTime.getTime() - new Date(latestAction.createdAt).getTime();
-
-    if (timeDifference <= 24 * 60 * 60 * 1000) {
-      status = "running";
-    } else {
-      status = "issue";
-    }
+  if (environment.appSetupCompleted) {
+    status = "running";
   } else {
     status = "notImplemented";
   }
 
-  const currentStatus = stati[status];
+  const currentStatus: { icon: React.ExoticComponent; title: string; subtitle: string } = stati[status];
 
-  if (type === "large") {
-    return (
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center space-y-2 rounded-lg border py-6 text-center",
+        status === "notImplemented" && "border-slate-200 bg-slate-100",
+        status === "running" && "border-emerald-200 bg-emerald-100"
+      )}>
       <div
-        className={clsx(
-          "flex flex-col items-center justify-center space-y-2 rounded-lg py-6 text-center",
-          status === "notImplemented" && "bg-slate-100",
-          status === "running" && "bg-green-100",
-          status === "issue" && "bg-amber-100"
+        className={cn(
+          "flex h-12 w-12 items-center justify-center rounded-full border bg-white p-2",
+          status === "notImplemented" && "border-slate-200 text-slate-700",
+          status === "running" && "border-emerald-200 text-emerald-700"
         )}>
-        <div
-          className={clsx(
-            "h-12 w-12 rounded-full bg-white p-2",
-            status === "notImplemented" && "text-slate-700",
-            status === "running" && "text-green-700",
-            status === "issue" && "text-amber-700"
-          )}>
-          <currentStatus.icon />
-        </div>
-        <p className="text-md font-bold text-slate-800 md:text-xl">{currentStatus.title}</p>
-        <p className="text-sm text-slate-700">
-          {currentStatus.subtitle}{" "}
-          {latestAction && <span>{timeSince(latestAction.createdAt.toISOString())}</span>}
-        </p>
+        <currentStatus.icon />
       </div>
-    );
-  }
-  if (type === "mini") {
-    return (
-      <Link href={`/environments/${environment.id}/settings/setup`}>
-        <div className="group my-4 flex justify-center">
-          <div className=" flex rounded-full bg-slate-100 px-2 py-1">
-            <p className="mr-2 text-sm text-slate-400 group-hover:underline">
-              {currentStatus.subtitle}{" "}
-              {latestAction && <span>{timeSince(latestAction.createdAt.toISOString())}</span>}
-            </p>
-            <div
-              className={clsx(
-                "h-5 w-5 rounded-full p-0.5",
-                status === "notImplemented" && "bg-slate-100 text-slate-700",
-                status === "running" && "bg-green-100 text-green-700",
-                status === "issue" && "bg-amber-100 text-amber-700"
-              )}>
-              <currentStatus.icon />
-            </div>
-          </div>
-        </div>
-      </Link>
-    );
-  } else {
-    return null;
-  }
-}
+      <p className="text-md font-bold text-slate-800 md:text-xl">{currentStatus.title}</p>
+      <p className="w-2/3 text-balance text-sm text-slate-600">{currentStatus.subtitle}</p>
+      {status === "notImplemented" && (
+        <Button variant="outline" size="sm" className="bg-white" onClick={() => router.refresh()}>
+          <RotateCcwIcon />
+          {t("environments.project.app-connection.recheck")}
+        </Button>
+      )}
+    </div>
+  );
+};

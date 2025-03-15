@@ -1,5 +1,6 @@
-import { formatDistance } from "date-fns";
-import intlFormat from "date-fns/intlFormat";
+import { formatDistance, intlFormat } from "date-fns";
+import { de, enUS, fr, pt, ptBR, zhTW } from "date-fns/locale";
+import { TUserLocale } from "@formbricks/types/user";
 
 export const convertDateString = (dateString: string) => {
   if (!dateString) {
@@ -10,7 +11,7 @@ export const convertDateString = (dateString: string) => {
     date,
     {
       year: "numeric",
-      month: "long",
+      month: "short",
       day: "numeric",
     },
     {
@@ -75,17 +76,43 @@ export const convertTimeString = (dateString: string) => {
   );
 };
 
-export const timeSince = (dateString: string) => {
+const getLocaleForTimeSince = (locale: TUserLocale) => {
+  switch (locale) {
+    case "de-DE":
+      return de;
+    case "en-US":
+      return enUS;
+    case "pt-BR":
+      return ptBR;
+    case "fr-FR":
+      return fr;
+    case "zh-Hant-TW":
+      return zhTW;
+    case "pt-PT":
+      return pt;
+  }
+};
+
+export const timeSince = (dateString: string, locale: TUserLocale) => {
   const date = new Date(dateString);
+  return formatDistance(date, new Date(), {
+    addSuffix: true,
+    locale: getLocaleForTimeSince(locale),
+  });
+};
+
+export const timeSinceDate = (date: Date) => {
   return formatDistance(date, new Date(), {
     addSuffix: true,
   });
 };
 
-export const timeSinceConditionally = (dateString: string) => {
-  return new Date().getTime() - new Date(dateString).getTime() > 14 * 24 * 60 * 60 * 1000
-    ? convertDateTimeStringShort(dateString)
-    : timeSince(dateString);
+export const formatDate = (date: Date) => {
+  return intlFormat(date, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 };
 
 export const getTodaysDateFormatted = (seperator: string) => {
@@ -95,12 +122,35 @@ export const getTodaysDateFormatted = (seperator: string) => {
   return formattedDate;
 };
 
-export function convertDatesInObject(obj: any) {
-  for (let key in obj) {
-    if ((key === "createdAt" || key === "updatedAt") && !isNaN(Date.parse(obj[key]))) {
-      obj[key] = new Date(obj[key]);
+export const getTodaysDateTimeFormatted = (seperator: string) => {
+  const date = new Date();
+  const formattedDate = date.toISOString().split("T")[0].split("-").join(seperator);
+  const formattedTime = date.toTimeString().split(" ")[0].split(":").join(seperator);
+
+  return [formattedDate, formattedTime].join(seperator);
+};
+
+export const convertDatesInObject = <T>(obj: T): T => {
+  if (obj === null || typeof obj !== "object") {
+    return obj; // Return if obj is not an object
+  }
+  if (Array.isArray(obj)) {
+    // Handle arrays by mapping each element through the function
+    return obj.map((item) => convertDatesInObject(item)) as unknown as T;
+  }
+  const newObj: any = {};
+  for (const key in obj) {
+    if (
+      (key === "createdAt" || key === "updatedAt") &&
+      typeof obj[key] === "string" &&
+      !isNaN(Date.parse(obj[key] as unknown as string))
+    ) {
+      newObj[key] = new Date(obj[key] as unknown as string);
     } else if (typeof obj[key] === "object" && obj[key] !== null) {
-      convertDatesInObject(obj[key]);
+      newObj[key] = convertDatesInObject(obj[key]);
+    } else {
+      newObj[key] = obj[key];
     }
   }
-}
+  return newObj;
+};
